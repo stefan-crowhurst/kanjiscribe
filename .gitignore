@@ -10,3 +10,6 @@ resources/
 .env
 .env.*
 *.tsbuildinfo
+packages/importer/**/*.db
+packages/importer/**/*.db-wal
+packages/importer/**/*.db-shm
