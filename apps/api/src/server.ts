@@ -1181,6 +1181,126 @@ app.get('/stats/kanji/:literal', async (request, reply) => {
   };
 });
 
+app.get('/stats/top-words', async () => {
+  const rows = sqlite
+    .prepare(
+      `
+      SELECT
+        vsis.study_item_id,
+        vsis.surface_form,
+        vsis.selected_reading,
+        vsis.times_completed,
+        vsis.total_time_ms,
+        vsis.avg_completion_time_ms
+      FROM v_study_item_stats vsis
+      WHERE vsis.times_completed > 0
+      ORDER BY vsis.times_completed DESC, vsis.total_time_ms DESC
+      LIMIT 10
+      `
+    )
+    .all() as Array<{
+      study_item_id: number;
+      surface_form: string;
+      selected_reading: string;
+      times_completed: number;
+      total_time_ms: number;
+      avg_completion_time_ms: number | null;
+    }>;
+
+  return {
+    words: rows.map((row) => ({
+      study_item_id: row.study_item_id,
+      surface_form: row.surface_form,
+      selected_reading: row.selected_reading,
+      times_completed: row.times_completed,
+      total_time_ms: row.total_time_ms,
+      avg_completion_time_ms: Math.round(row.avg_completion_time_ms ?? 0)
+    }))
+  };
+});
+
+app.get('/stats/slowest-words', async () => {
+  const rows = sqlite
+    .prepare(
+      `
+      SELECT
+        vsis.study_item_id,
+        vsis.surface_form,
+        vsis.selected_reading,
+        vsis.times_completed,
+        vsis.total_time_ms,
+        vsis.avg_completion_time_ms
+      FROM v_study_item_stats vsis
+      WHERE vsis.times_completed >= 2 AND vsis.avg_completion_time_ms IS NOT NULL
+      ORDER BY vsis.avg_completion_time_ms DESC
+      LIMIT 10
+      `
+    )
+    .all() as Array<{
+      study_item_id: number;
+      surface_form: string;
+      selected_reading: string;
+      times_completed: number;
+      total_time_ms: number;
+      avg_completion_time_ms: number | null;
+    }>;
+
+  return {
+    words: rows.map((row) => ({
+      study_item_id: row.study_item_id,
+      surface_form: row.surface_form,
+      selected_reading: row.selected_reading,
+      times_completed: row.times_completed,
+      total_time_ms: row.total_time_ms,
+      avg_completion_time_ms: Math.round(row.avg_completion_time_ms ?? 0)
+    }))
+  };
+});
+
+app.get('/stats/top-kanji', async () => {
+  const rows = sqlite
+    .prepare(
+      `
+      SELECT
+        vks.kanji_literal,
+        vks.word_count,
+        vks.total_assignments,
+        vks.times_drilled,
+        k.onyomi_json,
+        k.kunyomi_json,
+        k.stroke_count,
+        k.grade
+      FROM v_kanji_stats vks
+      JOIN kanji k ON k.literal = vks.kanji_literal
+      ORDER BY vks.times_drilled DESC, vks.total_assignments DESC
+      LIMIT 10
+      `
+    )
+    .all() as Array<{
+      kanji_literal: string;
+      word_count: number;
+      total_assignments: number;
+      times_drilled: number;
+      onyomi_json: string;
+      kunyomi_json: string;
+      stroke_count: number;
+      grade: number | null;
+    }>;
+
+  return {
+    kanji: rows.map((row) => ({
+      literal: row.kanji_literal,
+      word_count: row.word_count,
+      total_assignments: row.total_assignments,
+      times_drilled: row.times_drilled,
+      onyomi: safeJsonParse<string[]>(row.onyomi_json),
+      kunyomi: safeJsonParse<string[]>(row.kunyomi_json),
+      stroke_count: row.stroke_count,
+      grade: row.grade
+    }))
+  };
+});
+
 if (fs.existsSync(appConfig.webDistDir)) {
   app.get('*', async (_request, reply) => {
     return reply.sendFile('index.html');

@@ -26,8 +26,46 @@ type DashboardResponse = {
   }>;
 };
 
+type TopWordsResponse = {
+  words: Array<{
+    study_item_id: number;
+    surface_form: string;
+    selected_reading: string;
+    times_completed: number;
+    total_time_ms: number;
+    avg_completion_time_ms: number;
+  }>;
+};
+
+type SlowestWordsResponse = {
+  words: Array<{
+    study_item_id: number;
+    surface_form: string;
+    selected_reading: string;
+    times_completed: number;
+    total_time_ms: number;
+    avg_completion_time_ms: number;
+  }>;
+};
+
+type TopKanjiResponse = {
+  kanji: Array<{
+    literal: string;
+    word_count: number;
+    total_assignments: number;
+    times_drilled: number;
+    onyomi: string[];
+    kunyomi: string[];
+    stroke_count: number;
+    grade: number | null;
+  }>;
+};
+
 export function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
+  const [topWords, setTopWords] = useState<TopWordsResponse | null>(null);
+  const [slowestWords, setSlowestWords] = useState<SlowestWordsResponse | null>(null);
+  const [topKanji, setTopKanji] = useState<TopKanjiResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [yearOffset, setYearOffset] = useState(0);
 
@@ -49,6 +87,20 @@ export function DashboardPage() {
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load dashboard'));
   }, [range.from, range.to]);
+
+  useEffect(() => {
+    Promise.all([
+      apiRequest<TopWordsResponse>('/stats/top-words'),
+      apiRequest<SlowestWordsResponse>('/stats/slowest-words'),
+      apiRequest<TopKanjiResponse>('/stats/top-kanji')
+    ])
+      .then(([top, slowest, kanji]) => {
+        setTopWords(top);
+        setSlowestWords(slowest);
+        setTopKanji(kanji);
+      })
+      .catch(() => {});
+  }, []);
 
   if (error) {
     return <p className="error">{error}</p>;
@@ -122,6 +174,76 @@ export function DashboardPage() {
         </div>
         <Heatmap days={data.heatmap} from={range.from} to={range.to} />
       </article>
+
+      <div className="reporting-grid">
+        <article className="card section-card">
+          <h2>Most Drilled Words</h2>
+          {topWords?.words.length ? (
+            <ol className="reporting-list">
+              {topWords.words.map((word) => (
+                <li key={word.study_item_id}>
+                  <span className="reporting-word">
+                    <strong>{word.surface_form}</strong>
+                    <span className="reporting-reading">{word.selected_reading}</span>
+                  </span>
+                  <span className="reporting-stat">
+                    {word.times_completed}× completed
+                  </span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="muted">No words drilled yet.</p>
+          )}
+        </article>
+
+        <article className="card section-card">
+          <h2>Slowest Words</h2>
+          {slowestWords?.words.length ? (
+            <ol className="reporting-list">
+              {slowestWords.words.map((word) => (
+                <li key={word.study_item_id}>
+                  <span className="reporting-word">
+                    <strong>{word.surface_form}</strong>
+                    <span className="reporting-reading">{word.selected_reading}</span>
+                  </span>
+                  <span className="reporting-stat">
+                    avg {formatMs(word.avg_completion_time_ms)}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="muted">Need at least 2 completions per word.</p>
+          )}
+        </article>
+
+        <article className="card section-card">
+          <h2>Most Drilled Kanji</h2>
+          {topKanji?.kanji.length ? (
+            <ol className="reporting-list">
+              {topKanji.kanji.map((k) => {
+                const readings = [k.onyomi[0], k.kunyomi[0]].filter(Boolean);
+                return (
+                  <li key={k.literal}>
+                    <span className="reporting-kanji">
+                      <strong className="reporting-kanji-literal">{k.literal}</strong>
+                      <span className="reporting-kanji-meanings">
+                        {readings.join(', ') || '-'}
+                      </span>
+                    </span>
+                    <span className="reporting-stat">
+                      {k.times_drilled}× drilled
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : (
+            <p className="muted">No kanji drilled yet.</p>
+          )}
+        </article>
+      </div>
     </section>
   );
 }
