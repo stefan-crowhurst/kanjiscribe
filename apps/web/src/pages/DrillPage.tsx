@@ -43,6 +43,7 @@ export function DrillPage() {
   const [data, setData] = useState<DrillPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [isReopening, setIsReopening] = useState(false);
 
   const customQueueIds = useMemo(() => {
     const raw = params.get('queue_ids');
@@ -89,6 +90,7 @@ export function DrillPage() {
 
     setElapsedMs(0);
     setError(null);
+    setIsReopening(false);
 
     const query = queueSource ? `?queue_source=${encodeURIComponent(queueSource)}` : '';
     apiRequest<DrillPayload>(`/assignments/${assignmentId}/drill${query}`)
@@ -105,6 +107,8 @@ export function DrillPage() {
 
   const gloss = useMemo(() => data?.dictionary_entry.senses[0]?.glosses?.join('; ') ?? '-', [data]);
 
+  const isCompleted = data?.assignment.status === 'completed';
+
   async function updateAssignment(action: 'complete' | 'skip') {
     if (!data) {
       return;
@@ -116,19 +120,50 @@ export function DrillPage() {
         body: JSON.stringify({ time_spent_ms: elapsedMs })
       });
 
-      if (hasCustomQueue && customNextAssignmentId) {
-        navigate(`/drill/${customNextAssignmentId}${drillQuery}`);
-      } else if (hasCustomQueue && customPrevAssignmentId) {
-        navigate(`/drill/${customPrevAssignmentId}${drillQuery}`);
-      } else if (data.queue.next_assignment_id) {
-        navigate(`/drill/${data.queue.next_assignment_id}${drillQuery}`);
-      } else if (queueSource && data.queue.prev_assignment_id) {
-        navigate(`/drill/${data.queue.prev_assignment_id}${drillQuery}`);
+      // After completing/skipping, find the next pending assignment
+      const today = data.assignment.assigned_for_date;
+      const pendingRes = await apiRequest<{ assignments: Array<{ id: number }> }>(
+        `/assignments?status=pending&date=${today}`
+      );
+      const nextPending = pendingRes.assignments[0];
+
+      if (nextPending) {
+        // Navigate to the first pending assignment with queue_source
+        const nextQuery = queueSource ? `?queue_source=${encodeURIComponent(queueSource)}` : '';
+        navigate(`/drill/${nextPending.id}${nextQuery}`);
+      } else if (queueSource === 'backlog') {
+        navigate('/backlog');
       } else {
-        navigate(queueSource === 'backlog' ? '/backlog' : '/today');
+        navigate('/today');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update assignment');
+    }
+  }
+
+  async function reopenAssignment() {
+    if (!data) {
+      return;
+    }
+
+    setIsReopening(true);
+    setError(null);
+
+    try {
+      await apiRequest(`/assignments/${data.assignment.id}/reopen`, {
+        method: 'POST'
+      });
+
+      // Reset timer and refresh data
+      setElapsedMs(0);
+
+      const query = queueSource ? `?queue_source=${encodeURIComponent(queueSource)}` : '';
+      const refreshedData = await apiRequest<DrillPayload>(`/assignments/${assignmentId}/drill${query}`);
+      setData(refreshedData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reopen assignment');
+    } finally {
+      setIsReopening(false);
     }
   }
 
@@ -142,7 +177,7 @@ export function DrillPage() {
 
   return (
     <section className="drill-screen">
-      <div className="card section-card drill-hero">
+      <div className={`card section-card drill-hero ${isCompleted ? 'drill-hero--completed' : ''}`}>
         <small className="drill-queue">
           {hasCustomQueue
             ? `${queueLabel ?? 'Backlog selection'} ${customQueueIndex + 1}/${customQueueIds.length}`
@@ -197,12 +232,24 @@ export function DrillPage() {
       <footer className="drill-footer card">
         <p>Elapsed: {formatMs(elapsedMs)}</p>
         <div>
-          <button className="button" onClick={() => updateAssignment('complete')}>
-            Complete
-          </button>
-          <button className="button button-secondary" onClick={() => updateAssignment('skip')}>
-            Skip
-          </button>
+          {isCompleted ? (
+            <button 
+              className="button" 
+              onClick={reopenAssignment}
+              disabled={isReopening}
+            >
+              {isReopening ? 'Reopening...' : 'Reopen'}
+            </button>
+          ) : (
+            <>
+              <button className="button" onClick={() => updateAssignment('complete')}>
+                Complete
+              </button>
+              <button className="button button-secondary" onClick={() => updateAssignment('skip')}>
+                Skip
+              </button>
+            </>
+          )}
           {(hasCustomQueue ? customPrevAssignmentId : data.queue.prev_assignment_id) ? (
             <Link
               className="button button-secondary"

@@ -15,12 +15,25 @@ export function apiAssetUrl(path: string): string {
 }
 
 export async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {};
+  
+  // Only set Content-Type if there's a body to send
+  if (options?.body) {
+    headers['Content-Type'] = 'application/json';
+  }
+  
+  // Merge any additional headers from options
+  if (options?.headers) {
+    Object.entries(options.headers).forEach(([key, value]) => {
+      if (typeof value === 'string') {
+        headers[key] = value;
+      }
+    });
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options?.headers ?? {})
-    },
-    ...options
+    ...options,
+    headers
   });
 
   if (!response.ok) {

@@ -416,7 +416,7 @@ function computeQueue(assignmentId: number, queueSource?: 'today' | 'backlog') {
           `
           SELECT id
           FROM daily_assignment
-          WHERE status = 'pending' AND assigned_for_date = ?
+          WHERE status != 'archived' AND assigned_for_date = ?
           ORDER BY created_at ASC
           `
         )
@@ -428,7 +428,7 @@ function computeQueue(assignmentId: number, queueSource?: 'today' | 'backlog') {
         `
         SELECT id
         FROM daily_assignment
-        WHERE status IN ('pending', 'skipped')
+        WHERE status IN ('pending', 'skipped', 'completed')
         ORDER BY assigned_for_date ASC, created_at ASC
         `
       )
@@ -701,7 +701,31 @@ app.get('/assignments', async (request, reply) => {
 
 app.get('/assignments/backlog', async () => {
   const assignments = listAssignments({ backlogOnly: true });
-  return { assignments };
+
+  const dates = [...new Set(assignments.map((a) => a.assigned_for_date))];
+  const placeholders = dates.map(() => '?').join(',');
+  const dayStats = sqlite
+    .prepare(
+      `
+      SELECT
+        assigned_for_date AS date,
+        total_assignments,
+        completed_count,
+        pending_count
+      FROM v_day_summary
+      WHERE assigned_for_date IN (${placeholders})
+      `
+    )
+    .all(...dates) as Array<{
+      date: string;
+      total_assignments: number;
+      completed_count: number;
+      pending_count: number;
+    }>;
+
+  const dayStatsMap = new Map(dayStats.map((d) => [d.date, d]));
+
+  return { assignments, dayStats: dayStatsMap };
 });
 
 app.get('/assignments/:id/drill', async (request, reply) => {

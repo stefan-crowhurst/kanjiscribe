@@ -338,6 +338,32 @@ nav a.active {
   line-height: 1.25;
 }
 
+.assignment-card-link {
+  color: inherit;
+  text-decoration: none;
+  flex: 1;
+  min-width: 0;
+}
+
+.assignment-card-link:hover strong {
+  color: var(--accent);
+}
+
+.assignment-card--completed {
+  background: linear-gradient(135deg, #f8f4ed 0%, #f0e8dc 100%);
+  border-color: #d4c8b8;
+}
+
+.assignment-card--completed small {
+  color: #8d7b6b;
+}
+
+.assignment-card--today-completed {
+  border-color: var(--ok);
+  border-width: 1px;
+  background: linear-gradient(135deg, #f4f8f4 0%, #e8f0e8 100%);
+}
+
 .backlog-day-list {
   display: grid;
   gap: 1rem;
@@ -353,11 +379,73 @@ nav a.active {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  margin-bottom: 0.55rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--border);
 }
 
-.backlog-day-header h3 {
+.today-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.today-header h2 {
   margin: 0;
+}
+
+.today-header p {
+  margin: 0.15rem 0 0;
+}
+
+.backlog-day-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+
+.backlog-day-toggle:hover {
+  background: transparent;
+  transform: none;
+  box-shadow: none;
+  filter: none;
+}
+
+.backlog-day-chevron {
+  color: var(--muted);
+  font-size: 1.4rem;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: transform 150ms ease;
+  display: inline-block;
+}
+
+.backlog-day-toggle--expanded .backlog-day-chevron {
+  transform: rotate(90deg);
+}
+
+.backlog-day-toggle h3 {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.backlog-day-stats {
+  font-size: 0.85rem;
   color: var(--muted);
   line-height: 1.2;
 }
@@ -820,6 +908,15 @@ select:focus {
   padding-top: 0.75rem;
 }
 
+.drill-hero--completed {
+  background: linear-gradient(135deg, #f8f4ed 0%, #f0e8dc 100%);
+  border-color: #d4c8b8;
+}
+
+.drill-hero--completed .drill-queue {
+  color: #8d7b6b;
+}
+
 .drill-queue {
   display: block;
   margin-bottom: 0.45rem;
@@ -1046,9 +1143,27 @@ small {
   .backlog-day-header {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.55rem;
+  }
+
+  .backlog-day-toggle {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
   }
 
   .backlog-day-header .button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .today-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.55rem;
+  }
+
+  .today-header .button {
     width: 100%;
     justify-content: center;
   }
