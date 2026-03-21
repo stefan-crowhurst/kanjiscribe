@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Kanjiscribe mark">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3f8a5c" />
+      <stop offset="1" stop-color="#2f6f49" />
+    </linearGradient>
+  </defs>
+
+  <rect x="2" y="2" width="60" height="60" rx="13" fill="url(#bg)" />
+
+  <text
+    x="50%"
+    y="50%"
+    dy="0.08em"
+    text-anchor="middle"
+    dominant-baseline="central"
+    font-size="32"
+    font-family="Noto Serif JP, Hiragino Mincho ProN, Yu Mincho, serif"
+    font-weight="700"
+    fill="#f7fff9"
+    stroke="#ffffff"
+    stroke-width="0.65"
+    paint-order="stroke fill"
+  >
+    字
+  </text>
+</svg>

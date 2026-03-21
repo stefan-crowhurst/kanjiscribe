@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/kanji-svg/
+resources/
+.env
+.env.*
+*.tsbuildinfo

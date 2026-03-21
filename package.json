@@ -1,0 +1,24 @@
+{
+  "name": "kanjiscribe",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter @kanjiscribe/api dev\" \"pnpm --filter @kanjiscribe/web dev\"",
+    "build": "pnpm -r build",
+    "check": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.29.0",
+    "@typescript-eslint/parser": "^8.29.0",
+    "@types/node": "^22.14.1",
+    "concurrently": "^9.2.0",
+    "drizzle-kit": "^0.30.4",
+    "eslint": "^9.23.0",
+    "prettier": "^3.5.3",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}
