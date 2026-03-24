@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 type HeatmapDay = {
   date: string;
@@ -61,6 +62,8 @@ export function Heatmap({ days, from, to }: { days: HeatmapDay[]; from: string; 
   const [hoverDate, setHoverDate] = useState<string | null>(null);
   const [pinnedDate, setPinnedDate] = useState<string | null>(null);
   const [tooltipAnchor, setTooltipAnchor] = useState<{ x: number; y: number; placeAbove: boolean } | null>(null);
+  const navigate = useNavigate();
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const byDate = new Map(days.map((day) => [day.date, day]));
   const maxCompleted = days.reduce((max, day) => Math.max(max, day.completed_count), 0);
@@ -87,11 +90,28 @@ export function Heatmap({ days, from, to }: { days: HeatmapDay[]; from: string; 
   const columnGap = 4;
   const heatmapGridWidth = totalWeeks * columnWidth + (totalWeeks - 1) * columnGap;
 
-  const monthMarkers = new Map<number, string>();
+  const monthMarkers = new Map<number, { label: string; offset?: number }>();
+  const monthPositions: Array<{ weekIndex: number; monthIndex: number }> = [];
+  
+  // First pass: collect all month positions
   allDates.forEach((date, index) => {
     if (date.getUTCDate() === 1 || index === 0) {
-      monthMarkers.set(Math.floor(index / 7), MONTH_LABELS[date.getUTCMonth()]);
+      const weekIndex = Math.floor(index / 7);
+      monthPositions.push({ weekIndex, monthIndex: date.getUTCMonth() });
     }
+  });
+  
+  // Second pass: add markers with offsets for close months
+  monthPositions.forEach((pos, i) => {
+    let offset = 0;
+    // Check if previous month is within 2 weeks
+    if (i > 0) {
+      const prevPos = monthPositions[i - 1];
+      if (pos.weekIndex - prevPos.weekIndex <= 2) {
+        offset = 12; // Offset by ~1.5 column widths
+      }
+    }
+    monthMarkers.set(pos.weekIndex, { label: MONTH_LABELS[pos.monthIndex], offset });
   });
 
   const activeDay = activeDate ? byDate.get(activeDate) : undefined;
@@ -178,6 +198,30 @@ export function Heatmap({ days, from, to }: { days: HeatmapDay[]; from: string; 
     };
   }, [hoverDate, pinnedDate]);
 
+  // Scroll to the end to show most recent activity by default
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+    }
+  }, []);
+
+  // Track window width and scroll to end when resizing to smaller screen
+  useEffect(() => {
+    let lastWidth = window.innerWidth;
+    
+    const handleResize = () => {
+      const currentWidth = window.innerWidth;
+      // If window got smaller (like landscape -> portrait), scroll to end
+      if (currentWidth < lastWidth && scrollRef.current) {
+        scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+      }
+      lastWidth = currentWidth;
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   return (
     <div className="heatmap-chart" aria-label="drill heatmap">
       <div className="heatmap-main">
@@ -187,12 +231,18 @@ export function Heatmap({ days, from, to }: { days: HeatmapDay[]; from: string; 
           ))}
         </div>
 
-        <div className="heatmap-scroll" role="region" aria-label="Scrollable yearly heatmap">
+        <div className="heatmap-scroll" role="region" aria-label="Scrollable yearly heatmap" ref={scrollRef}>
           <div className="heatmap-scroll-inner" style={{ width: '100%', minWidth: `${heatmapGridWidth}px` }}>
             <div className="heatmap-month-row" style={{ gridTemplateColumns: `repeat(${totalWeeks}, minmax(12px, 1fr))` }}>
-              {Array.from(monthMarkers.entries()).map(([weekIndex, label]) => (
-                <span key={`${weekIndex}-${label}`} style={{ gridColumnStart: weekIndex + 1 }}>
-                  {label}
+              {Array.from(monthMarkers.entries()).map(([weekIndex, data]) => (
+                <span 
+                  key={`${weekIndex}-${data.label}`} 
+                  style={{ 
+                    gridColumnStart: weekIndex + 1,
+                    marginLeft: data.offset ? `${data.offset}px` : undefined
+                  }}
+                >
+                  {data.label}
                 </span>
               ))}
             </div>
@@ -234,14 +284,19 @@ export function Heatmap({ days, from, to }: { days: HeatmapDay[]; from: string; 
                       }
                     }}
                     onClick={(event) => {
-                      setPinnedDate((current) => {
-                        const next = current === dateString ? null : dateString;
-                        if (!next && !hoverDate) {
-                          setTooltipAnchor(null);
-                        }
-                        return next;
-                      });
-                      setTooltipFromCell(event.currentTarget);
+                      const dayData = byDate.get(dateString);
+                      if (dayData && dayData.total_assignments > 0) {
+                        navigate(`/day/${dateString}`);
+                      } else {
+                        setPinnedDate((current) => {
+                          const next = current === dateString ? null : dateString;
+                          if (!next && !hoverDate) {
+                            setTooltipAnchor(null);
+                          }
+                          return next;
+                        });
+                        setTooltipFromCell(event.currentTarget);
+                      }
                     }}
                     aria-label={`${dateString}: ${day?.completed_count ?? 0} completed, ${day?.pending_count ?? 0} pending`}
                   />

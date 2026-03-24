@@ -152,7 +152,10 @@ export function DashboardPage() {
 
       <article className="card section-card">
         <div className="heatmap-heading">
-          <h2>Progress Heatmap</h2>
+          <div>
+            <h2>Progress Heatmap</h2>
+            <p className="muted">Click any day with activity to view assignment details</p>
+          </div>
           <div className="heatmap-controls">
             <span className="muted">
               {formatShortDate(range.from)} to {formatShortDate(range.to)}

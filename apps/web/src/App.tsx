@@ -3,10 +3,12 @@ import { NavLink, Route, Routes } from 'react-router-dom';
 import { BacklogPage } from './pages/BacklogPage.js';
 import { KanjiIcon } from './components/KanjiIcon.js';
 import { DashboardPage } from './pages/DashboardPage.js';
+import { DayDetailPage } from './pages/DayDetailPage.js';
 import { DrillPage } from './pages/DrillPage.js';
 import { IntakePage } from './pages/IntakePage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { TodayPage } from './pages/TodayPage.js';
+import { WordViewPage } from './pages/WordViewPage.js';
 
 export function App() {
   return (
@@ -59,6 +61,8 @@ export function App() {
           <Route path="/today" element={<TodayPage />} />
           <Route path="/backlog" element={<BacklogPage />} />
           <Route path="/drill/:assignmentId" element={<DrillPage />} />
+          <Route path="/day/:date" element={<DayDetailPage />} />
+          <Route path="/word/:assignmentId" element={<WordViewPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>
