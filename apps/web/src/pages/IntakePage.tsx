@@ -181,12 +181,14 @@ export function IntakePage() {
             {isSearching ? 'Searching...' : 'Search'}
           </button>
         </form>
+      </div>
 
+      {(error || status) ? (
         <div className="intake-feedback" aria-live="polite">
           {error ? <p className="error">{error}</p> : null}
           {status ? <p className="success">{status}</p> : null}
         </div>
-      </div>
+      ) : null}
 
       {isSearching || results.length > 0 ? (
         <div className="card section-card intake-results-card">
