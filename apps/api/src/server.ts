@@ -632,6 +632,29 @@ app.post('/study-items/intake', async (request, reply) => {
       }
     }
 
+    // Check if an assignment already exists for this study item and date
+    const existingAssignment = sqlite
+      .prepare(
+        `
+        SELECT id, status, created_at
+        FROM daily_assignment
+        WHERE study_item_id = ? AND assigned_for_date = ?
+        `
+      )
+      .get(studyItem.id, assignedForDate) as {
+      id: number;
+      status: string;
+      created_at: string;
+    } | undefined;
+
+    if (existingAssignment) {
+      // Assignment already exists, return 409 conflict
+      return reply.status(409).send({ 
+        error: 'Assignment already exists for this word and date',
+        assignment: existingAssignment
+      });
+    }
+
     const assignmentResult = sqlite
       .prepare(
         `

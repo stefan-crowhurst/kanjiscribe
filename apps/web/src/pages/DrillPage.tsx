@@ -44,6 +44,7 @@ export function DrillPage() {
   const [error, setError] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [isReopening, setIsReopening] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const customQueueIds = useMemo(() => {
     const raw = params.get('queue_ids');
@@ -91,6 +92,7 @@ export function DrillPage() {
     setElapsedMs(0);
     setError(null);
     setIsReopening(false);
+    setIsSubmitting(false);
 
     const query = queueSource ? `?queue_source=${encodeURIComponent(queueSource)}` : '';
     apiRequest<DrillPayload>(`/assignments/${assignmentId}/drill${query}`)
@@ -110,9 +112,12 @@ export function DrillPage() {
   const isCompleted = data?.assignment.status === 'completed';
 
   async function updateAssignment(action: 'complete' | 'skip') {
-    if (!data) {
+    if (!data || isSubmitting) {
       return;
     }
+
+    setIsSubmitting(true);
+    setError(null);
 
     try {
       await apiRequest(`/assignments/${data.assignment.id}/${action}`, {
@@ -138,6 +143,7 @@ export function DrillPage() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update assignment');
+      setIsSubmitting(false);
     }
   }
 
@@ -242,11 +248,19 @@ export function DrillPage() {
             </button>
           ) : (
             <>
-              <button className="button" onClick={() => updateAssignment('complete')}>
-                Complete
+              <button 
+                className="button" 
+                onClick={() => updateAssignment('complete')}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'Processing...' : 'Complete'}
               </button>
-              <button className="button button-secondary" onClick={() => updateAssignment('skip')}>
-                Skip
+              <button 
+                className="button button-secondary" 
+                onClick={() => updateAssignment('skip')}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'Processing...' : 'Skip'}
               </button>
             </>
           )}

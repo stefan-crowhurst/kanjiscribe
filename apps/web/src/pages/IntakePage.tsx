@@ -34,6 +34,7 @@ export function IntakePage() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [intakeStats, setIntakeStats] = useState<DashboardStatsResponse | null>(null);
 
   const selectedEntry = useMemo(
@@ -109,6 +110,11 @@ export function IntakePage() {
       return;
     }
 
+    if (isCreating) {
+      return;
+    }
+
+    setIsCreating(true);
     setError(null);
 
     try {
@@ -133,6 +139,8 @@ export function IntakePage() {
       searchInputRef.current?.focus();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create assignment');
+    } finally {
+      setIsCreating(false);
     }
   }
 
@@ -247,8 +255,13 @@ export function IntakePage() {
                 ))}
               </select>
 
-              <button type="button" className="button" onClick={onCreate}>
-                Add Assignment
+              <button 
+                type="button" 
+                className="button" 
+                onClick={onCreate}
+                disabled={isCreating}
+              >
+                {isCreating ? 'Adding...' : 'Add Assignment'}
               </button>
             </div>
           ) : null}
