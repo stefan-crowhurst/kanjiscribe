@@ -102,13 +102,22 @@ export function Heatmap({ days, from, to }: { days: HeatmapDay[]; from: string; 
   });
   
   // Second pass: add markers with offsets for close months
+  // Skip the last month if it's in the final week to prevent overflow
   monthPositions.forEach((pos, i) => {
+    // Skip last month if it's in the final week of the grid
+    if (i === monthPositions.length - 1 && pos.weekIndex >= totalWeeks - 1) {
+      return;
+    }
+    
     let offset = 0;
     // Check if previous month is within 2 weeks
     if (i > 0) {
       const prevPos = monthPositions[i - 1];
       if (pos.weekIndex - prevPos.weekIndex <= 2) {
-        offset = 12; // Offset by ~1.5 column widths
+        // Only add offset if this isn't the last month (to prevent overflow)
+        if (i < monthPositions.length - 1) {
+          offset = 12; // Offset by ~1.5 column widths
+        }
       }
     }
     monthMarkers.set(pos.weekIndex, { label: MONTH_LABELS[pos.monthIndex], offset });
