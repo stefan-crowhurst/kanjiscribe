@@ -230,7 +230,7 @@ export function IntakePage() {
                     {entry.is_common && <span className="badge badge-common" title="Common word">★</span>}
                     <span
                       className={`badge badge-match ${entry.match_type.includes('exact') ? 'badge-exact' : 'badge-prefix'}`}
-                      title={entry.is_common ? 'common' : 'uncommon'}
+                      title={`${entry.match_type.includes('exact') ? 'Exact' : 'Prefix'} ${entry.match_type.includes('spelling') ? 'spelling' : 'reading'}`}
                     >
                       {entry.match_type.includes('spelling') ? '字' : '音'}
                     </span>
