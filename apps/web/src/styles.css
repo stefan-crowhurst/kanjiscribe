@@ -741,18 +741,58 @@ select:focus {
   display: block;
   font-size: clamp(1.22rem, 2.1vw, 1.4rem);
   line-height: 1.15;
-}
-
-.candidate small strong {
-  display: inline;
-  font-size: inherit;
-  line-height: inherit;
+  word-break: keep-all;
 }
 
 .candidate .kana {
   margin: 0.2rem 0 0.3rem;
   font-size: 0.95rem;
   line-height: 1.1;
+  word-break: keep-all;
+}
+
+.candidate-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.badge-common {
+  color: #d4a017;
+  font-size: 0.85rem;
+}
+
+.badge-today {
+  color: #7aa985;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.badge-match {
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.badge-exact {
+  background: var(--accent);
+  color: #fff;
+}
+
+.badge-prefix {
+  border: 1.5px solid var(--accent);
+  color: var(--accent);
+  background: transparent;
 }
 
 .candidate p {

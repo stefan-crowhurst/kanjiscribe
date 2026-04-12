@@ -21,10 +21,6 @@ type DashboardStatsResponse = {
   overdue: { total_pending: number; incomplete_days: number; oldest_date: string | null };
 };
 
-function formatMatchType(value: string): string {
-  return value.replace(/_/g, ' ');
-}
-
 export function IntakePage() {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = useState('');
@@ -229,10 +225,15 @@ export function IntakePage() {
                   <strong>{entry.primary_spelling ?? entry.primary_reading}</strong>
                   <p className="kana">{entry.primary_reading ?? '-'}</p>
                   <p>{entry.glosses.join('; ') || 'No gloss available'}</p>
-                  <small>
-                    {entry.today_assigned ? <strong>already added today</strong> : null}
-                    {entry.today_assigned ? ' - ' : ''}
-                    {entry.is_common ? 'common' : 'uncommon'} - {formatMatchType(entry.match_type)}
+                  <small className="candidate-badges">
+                    {entry.today_assigned && <span className="badge badge-today" title="Already added today">✓</span>}
+                    {entry.is_common && <span className="badge badge-common" title="Common word">★</span>}
+                    <span
+                      className={`badge badge-match ${entry.match_type.includes('exact') ? 'badge-exact' : 'badge-prefix'}`}
+                      title={entry.is_common ? 'common' : 'uncommon'}
+                    >
+                      {entry.match_type.includes('spelling') ? '字' : '音'}
+                    </span>
                   </small>
                 </button>
               ))}
