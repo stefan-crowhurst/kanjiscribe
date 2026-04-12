@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { Heatmap } from '../components/Heatmap.js';
+import { ProgressCharts } from '../components/ProgressCharts.js';
 import { KanjiIcon } from '../components/KanjiIcon.js';
 import { apiRequest, formatMs, formatShortDate } from '../lib/api.js';
 
@@ -177,6 +178,8 @@ export function DashboardPage() {
         </div>
         <Heatmap days={data.heatmap} from={range.from} to={range.to} />
       </article>
+
+      <ProgressCharts />
 
       <div className="reporting-grid">
         <article className="card section-card">
