@@ -285,11 +285,11 @@ nav a.active {
 }
 
 .intake-loading {
-  min-height: 12rem;
   display: grid;
   place-items: center;
-  gap: 0.25rem;
+  gap: 1rem;
   color: var(--muted);
+  padding-bottom: 1rem;
 }
 
 .intake-loading p {

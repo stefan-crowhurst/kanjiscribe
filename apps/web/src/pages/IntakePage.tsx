@@ -73,7 +73,9 @@ export function IntakePage() {
     setIsSearching(true);
 
     try {
-      const response = await apiRequest<SearchResponse>(`/dictionary/search?q=${encodeURIComponent(query.trim())}`);
+      const response = await apiRequest<SearchResponse>(
+        `/dictionary/search?q=${encodeURIComponent(query.trim())}`
+      );
       setResults(response.results);
       if (response.results.length === 1) {
         const onlyResult = response.results[0];
@@ -181,13 +183,18 @@ export function IntakePage() {
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Type a word, e.g. 食べる"
           />
-          <button className="button" type="submit" disabled={isSearching} aria-disabled={isSearching}>
+          <button
+            className="button"
+            type="submit"
+            disabled={isSearching}
+            aria-disabled={isSearching}
+          >
             {isSearching ? 'Searching...' : 'Search'}
           </button>
         </form>
       </div>
 
-      {(error || status) ? (
+      {error || status ? (
         <div className="intake-feedback" aria-live="polite">
           {error ? <p className="error">{error}</p> : null}
           {status ? <p className="success">{status}</p> : null}
@@ -226,8 +233,16 @@ export function IntakePage() {
                   <p className="kana">{entry.primary_reading ?? '-'}</p>
                   <p>{entry.glosses.join('; ') || 'No gloss available'}</p>
                   <small className="candidate-badges">
-                    {entry.today_assigned && <span className="badge badge-today" title="Already added today">✓</span>}
-                    {entry.is_common && <span className="badge badge-common" title="Common word">★</span>}
+                    {entry.today_assigned && (
+                      <span className="badge badge-today" title="Already added today">
+                        ✓
+                      </span>
+                    )}
+                    {entry.is_common && (
+                      <span className="badge badge-common" title="Common word">
+                        ★
+                      </span>
+                    )}
                     <span
                       className={`badge badge-match ${entry.match_type.includes('exact') ? 'badge-exact' : 'badge-prefix'}`}
                       title={`${entry.match_type.includes('exact') ? 'Exact' : 'Prefix'} ${entry.match_type.includes('spelling') ? 'spelling' : 'reading'}`}
@@ -256,13 +271,8 @@ export function IntakePage() {
                 ))}
               </select>
 
-              <button 
-                type="button" 
-                className="button" 
-                onClick={onCreate}
-                disabled={isCreating}
-              >
-                {isCreating ? 'Adding...' : 'Add Assignment'}
+              <button type="button" className="button" onClick={onCreate} disabled={isCreating}>
+                {isCreating ? 'Adding...' : 'Add'}
               </button>
             </div>
           ) : null}
