@@ -31,6 +31,7 @@ type DrillPayload = {
     day_completed_count: number;
     day_total_count: number;
   };
+  day_total_time_ms: number;
 };
 
 export function DrillPage() {
@@ -236,7 +237,9 @@ export function DrillPage() {
       </div>
 
       <footer className="drill-footer card">
-        <p>Elapsed: {formatMs(elapsedMs)}</p>
+        <p>
+          This word: {formatMs(elapsedMs)} - Total: {formatMs((data?.day_total_time_ms ?? 0) + elapsedMs)}
+        </p>
         <div>
           {isCompleted ? (
             <button 

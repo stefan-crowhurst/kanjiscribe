@@ -1,4 +1,4 @@
-import { NavLink, Route, Routes } from 'react-router-dom';
+import { Link, NavLink, Route, Routes } from 'react-router-dom';
 
 import { BacklogPage } from './pages/BacklogPage.js';
 import { KanjiIcon } from './components/KanjiIcon.js';
@@ -14,13 +14,15 @@ export function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div>
-          <h1 className="brand-title">
-            <img src="/brand-mark.svg" alt="" aria-hidden="true" className="brand-mark" />
-            <span>kanjiscribe</span>
-          </h1>
-          <p>Companion kanji drill workspace</p>
-        </div>
+        <Link to="/" className="brand-link">
+          <div>
+            <h1 className="brand-title">
+              <img src="/brand-mark.svg" alt="" aria-hidden="true" className="brand-mark" />
+              <span>kanjiscribe</span>
+            </h1>
+            <p>Companion kanji drill workspace</p>
+          </div>
+        </Link>
         <nav>
           <NavLink to="/">
             <span className="nav-link-content">

@@ -836,6 +836,17 @@ app.get('/assignments/:id/drill', async (request, reply) => {
   }>;
 
   const queue = computeQueue(id, sourceParsed.data);
+
+  const dayTotalRow = sqlite
+    .prepare(
+      `
+      SELECT SUM(COALESCE(time_spent_ms, 0)) AS total_time_ms
+      FROM daily_assignment
+      WHERE assigned_for_date = ?
+      `
+    )
+    .get(row.assigned_for_date) as { total_time_ms: number | null };
+
   return {
     assignment: {
       id: row.id,
@@ -871,7 +882,8 @@ app.get('/assignments/:id/drill', async (request, reply) => {
       frequency_rank: item.frequency_rank,
       stroke_asset_url: item.asset_path ? `/static/${item.asset_path}` : null
     })),
-    queue
+    queue,
+    day_total_time_ms: dayTotalRow.total_time_ms ?? 0
   };
 });
 
