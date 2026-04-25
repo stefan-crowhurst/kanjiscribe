@@ -99,7 +99,7 @@ export function BacklogPage() {
                       {completed}/{total} drilled, {remaining} remaining
                     </span>
                   </button>
-                  <Link className="button button-today" to={`/drill/${group.assignments[0].id}${query}`}>
+                  <Link className="button button-today" to={`/drill/${group.assignments[0]!.id}${query}`}>
                     Drill
                   </Link>
                 </div>

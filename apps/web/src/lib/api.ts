@@ -1,8 +1,11 @@
+declare const __API_PORT__: string;
+
 function getDefaultApiBase(): string {
+  const apiPort = __API_PORT__;
   if (typeof window === 'undefined') {
-    return 'http://localhost:3000';
+    return `http://localhost:${apiPort}`;
   }
-  return `${window.location.protocol}//${window.location.hostname}:3000`;
+  return `${window.location.protocol}//${window.location.hostname}:${apiPort}`;
 }
 
 export const API_BASE = import.meta.env.VITE_API_BASE ?? getDefaultApiBase();

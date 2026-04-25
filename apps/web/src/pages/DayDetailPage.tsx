@@ -151,7 +151,7 @@ export function DayDetailPage() {
                 <div className="day-drill-actions">
                   <Link 
                     className="button button-today" 
-                    to={`/drill/${pendingAssignments[0].id}?queue_source=today`}
+                    to={`/drill/${pendingAssignments[0]!.id}?queue_source=today`}
                   >
                     Drill pending words
                   </Link>

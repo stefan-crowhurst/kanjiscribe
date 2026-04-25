@@ -14,8 +14,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '../../..');
 
-const DB_PATH = process.env.DB_PATH ?? path.resolve(REPO_ROOT, 'data/kanjiscribe.db');
-const SVG_TARGET_DIR = process.env.KANJI_SVG_DIR ?? path.resolve(REPO_ROOT, 'data/kanji-svg');
+const DATA_DIR = process.env.KANJISCRIBE_DATA_DIR ?? path.resolve(REPO_ROOT, 'data');
+const DB_PATH = process.env.KANJISCRIBE_DB_PATH ?? path.join(DATA_DIR, 'kanjiscribe.db');
+const SVG_TARGET_DIR = process.env.KANJI_SVG_DIR ?? path.join(DATA_DIR, 'kanji-svg');
 
 const DB_DIR = path.dirname(DB_PATH);
 if (!fs.existsSync(DB_DIR)) {

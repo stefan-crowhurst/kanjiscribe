@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
@@ -49,12 +50,18 @@ function kanjiSvgFilename(char: string): string {
 }
 
 function runMigrationsOnBoot(): void {
-  const migrationPath = path.resolve(process.cwd(), 'apps/api/src/db/sql/0001_initial.sql');
-  if (!fs.existsSync(migrationPath)) {
+  const sqlDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'db/sql');
+  if (!fs.existsSync(sqlDir)) {
     return;
   }
-  const sql = fs.readFileSync(migrationPath, 'utf-8');
-  sqlite.exec(sql);
+  const files = fs
+    .readdirSync(sqlDir)
+    .filter((f) => f.endsWith('.sql'))
+    .sort();
+  for (const file of files) {
+    const sql = fs.readFileSync(path.join(sqlDir, file), 'utf-8');
+    sqlite.exec(sql);
+  }
 }
 
 function getEntryDetails(entryId: number) {
@@ -1493,6 +1500,21 @@ function requestLogSafe(error: unknown): void {
   }
   app.log.error({ error }, 'Unknown error');
 }
+
+async function shutdown(signal: string): Promise<void> {
+  app.log.info(`Received ${signal}, shutting down...`);
+  await app.close();
+  sqlite.pragma('wal_checkpoint(TRUNCATE)');
+  sqlite.close();
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => {
+  void shutdown('SIGTERM');
+});
+process.on('SIGINT', () => {
+  void shutdown('SIGINT');
+});
 
 try {
   await app.listen({ port: appConfig.port, host: appConfig.host });

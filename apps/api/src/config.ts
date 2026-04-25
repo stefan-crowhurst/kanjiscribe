@@ -4,11 +4,13 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const dataDir = process.env.KANJISCRIBE_DATA_DIR ?? path.resolve(__dirname, '../../../data');
+
 export const appConfig = {
-  port: Number(process.env.PORT ?? 3000),
-  host: process.env.HOST ?? '0.0.0.0',
-  dbPath: process.env.DB_PATH ?? path.resolve(__dirname, '../../../data/kanjiscribe.db'),
-  kanjiSvgDir: process.env.KANJI_SVG_DIR ?? path.resolve(__dirname, '../../../data/kanji-svg'),
+  port: Number(process.env.KANJISCRIBE_API_PORT ?? 52654),
+  host: process.env.KANJISCRIBE_API_HOST ?? '0.0.0.0',
+  dbPath: process.env.KANJISCRIBE_DB_PATH ?? path.join(dataDir, 'kanjiscribe.db'),
+  kanjiSvgDir: process.env.KANJI_SVG_DIR ?? path.join(dataDir, 'kanji-svg'),
   webDistDir: path.resolve(__dirname, '../../web/dist')
 };
 

@@ -1,0 +1,23 @@
+[Unit]
+Description=Kanjiscribe (API + Web)
+After=network.target
+
+[Service]
+Type=simple
+User=default
+WorkingDirectory=/media/default/ssd/prod/kanjiscribe
+
+Environment="NODE_ENV=production"
+Environment="KANJISCRIBE_API_HOST=0.0.0.0"
+Environment="KANJISCRIBE_API_PORT=52654"
+Environment="KANJISCRIBE_DATA_DIR=/media/default/ssd/prod/kanjiscribe/data"
+
+ExecStart=/usr/bin/node apps/api/dist/server.js
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target
