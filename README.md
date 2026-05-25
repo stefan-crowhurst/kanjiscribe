@@ -1,5 +1,14 @@
 # kanjiscribe
 
+<div align="center">
+  <table>
+    <tr>
+      <td width="50%"><img src="docs/images/kanjiscribe-preview.png" alt="Preview" /></td>
+      <td width="50%"><img src="docs/images/kanjiscribe-drill.png" alt="Drill view" /></td>
+    </tr>
+  </table>
+</div>
+
 Private companion app to help facilitate practicing writing Japanese words from Anki workflows.
 
 This application was primarily vibe-coded to fill a need of mine, I don't guarantee the quality of the code. You can follow the planning process I went through in [NOTES.md] which led to [PLAN.md](./PLAN.md) before starting implementation.
