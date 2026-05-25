@@ -1,6 +1,10 @@
 # kanjiscribe
 
-Private companion app for drilling difficult Japanese words from Anki workflows.
+Private companion app to help facilitate practicing writing Japanese words from Anki workflows.
+
+This application was primarily vibe-coded to fill a need of mine, I don't guarantee the quality of the code. You can follow the planning process I went through in [NOTES.md] which led to [PLAN.md](./PLAN.md) before starting implementation.
+
+For context this application was created to run on a VPS/Raspberry Pi/home server setup accessed via Tailscale. It is not recommended for production use as-is.
 
 ## Stack
 
