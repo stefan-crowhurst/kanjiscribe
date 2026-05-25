@@ -130,4 +130,6 @@ For deploying Kanjiscribe as a production systemd service on a Raspberry Pi (or 
 
 ## License
 
-Dataset attribution is maintained in-app on the Data Sources page. Kanjiscribe itself is a private, personal project.
+Dataset attribution is maintained in-app on the Data Sources page as per the requirements of the dataset licenses. No content derivative of the datasets is included in the content of the repository.
+
+Kanjiscribe's license may be found [here](./LICENSE).
