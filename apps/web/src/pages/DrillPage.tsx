@@ -66,6 +66,7 @@ export function DrillPage() {
   const hasCustomQueue = customQueueIndex >= 0;
   const customNextAssignmentId = hasCustomQueue ? customQueueIds[customQueueIndex + 1] ?? null : null;
   const customPrevAssignmentId = hasCustomQueue ? customQueueIds[customQueueIndex - 1] ?? null : null;
+  const nextAssignmentIdForRender = hasCustomQueue ? customNextAssignmentId : data?.queue.next_assignment_id ?? null;
 
   const drillQuery = useMemo(() => {
     const query = new URLSearchParams();
@@ -126,17 +127,22 @@ export function DrillPage() {
         body: JSON.stringify({ time_spent_ms: elapsedMs })
       });
 
-      // After completing/skipping, find the next pending assignment
-      const today = data.assignment.assigned_for_date;
-      const pendingRes = await apiRequest<{ assignments: Array<{ id: number }> }>(
-        `/assignments?status=pending&date=${today}`
-      );
-      const nextPending = pendingRes.assignments[0];
+      let nextAssignmentId: number | null;
 
-      if (nextPending) {
-        // Navigate to the first pending assignment with queue_source
-        const nextQuery = queueSource ? `?queue_source=${encodeURIComponent(queueSource)}` : '';
-        navigate(`/drill/${nextPending.id}${nextQuery}`);
+      if (hasCustomQueue) {
+        nextAssignmentId = customNextAssignmentId;
+      } else if (queueSource === 'today' && data.queue.next_assignment_id) {
+        nextAssignmentId = data.queue.next_assignment_id;
+      } else {
+        const today = data.assignment.assigned_for_date;
+        const pendingRes = await apiRequest<{ assignments: Array<{ id: number }> }>(
+          `/assignments?status=pending&date=${today}`
+        );
+        nextAssignmentId = pendingRes.assignments[0]?.id ?? null;
+      }
+
+      if (nextAssignmentId) {
+        navigate(`/drill/${nextAssignmentId}${drillQuery}`);
       } else if (queueSource === 'backlog') {
         navigate('/backlog');
       } else {
@@ -258,13 +264,15 @@ export function DrillPage() {
               >
                 {isSubmitting ? 'Processing...' : 'Complete'}
               </button>
-              <button 
-                className="button button-secondary" 
-                onClick={() => updateAssignment('skip')}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? 'Processing...' : 'Skip'}
-              </button>
+              {nextAssignmentIdForRender ? (
+                <button 
+                  className="button button-secondary" 
+                  onClick={() => updateAssignment('skip')}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Processing...' : 'Skip'}
+                </button>
+              ) : null}
             </>
           )}
           {(hasCustomQueue ? customPrevAssignmentId : data.queue.prev_assignment_id) ? (
