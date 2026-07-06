@@ -347,9 +347,7 @@ function listAssignments(params: { status?: string; date?: string; backlogOnly?:
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const orderSql = params.backlogOnly
-    ? 'ORDER BY da.assigned_for_date ASC, da.created_at ASC'
-    : 'ORDER BY da.assigned_for_date DESC, da.created_at DESC';
+  const orderSql = 'ORDER BY da.assigned_for_date ASC, da.created_at ASC';
 
   const rows = sqlite
     .prepare(
