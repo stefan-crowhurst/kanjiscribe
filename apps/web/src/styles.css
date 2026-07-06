@@ -351,6 +351,17 @@ nav a.active {
   min-width: 0;
 }
 
+.assignment-card-link--card {
+  display: block;
+  flex: none;
+  min-width: 0;
+}
+
+.assignment-card-link--card > .assignment-card {
+  height: 100%;
+  margin: 0;
+}
+
 .assignment-card-link:hover strong {
   color: var(--accent);
 }
