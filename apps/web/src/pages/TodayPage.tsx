@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { AssignmentList } from '../components/AssignmentList.js';
-import { apiRequest, todayDateString } from '../lib/api.js';
+import { apiRequest, archiveAssignment, todayDateString } from '../lib/api.js';
 
 type Assignment = {
   id: number;
@@ -55,6 +55,30 @@ export function TodayPage() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load today assignments'));
   }, []);
 
+  const handleRemove = useCallback(async (assignment: Assignment) => {
+    try {
+      await archiveAssignment(assignment.id);
+      const today = todayDateString();
+      const [assignmentsRes, statsRes] = await Promise.all([
+        apiRequest<{ assignments: Assignment[] }>(`/assignments?date=${today}`),
+        apiRequest<{ heatmap: DaySummaryResponse[] }>(`/stats/dashboard?from=${today}&to=${today}`)
+      ]);
+      setAssignments(assignmentsRes.assignments);
+      const todayStats = statsRes.heatmap.find((d) => d.date === today);
+      setDayStats(
+        todayStats
+          ? {
+              total_assignments: todayStats.total_assignments,
+              completed_count: todayStats.completed_count,
+              pending_count: todayStats.pending_count
+            }
+          : null
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove assignment');
+    }
+  }, []);
+
   const completed = dayStats?.completed_count ?? 0;
   const total = dayStats?.total_assignments ?? assignments?.length ?? 0;
   const pendingAssignments = assignments?.filter((a) => a.status === 'pending') ?? [];
@@ -78,7 +102,13 @@ export function TodayPage() {
         ) : null}
       </div>
       {error ? <p className="error">{error}</p> : null}
-      <AssignmentList assignments={assignments ?? []} queueSource="today" showDrillButton={false} variant="today" />
+      <AssignmentList
+        assignments={assignments ?? []}
+        queueSource="today"
+        showDrillButton={false}
+        variant="today"
+        onRemove={handleRemove}
+      />
     </section>
   );
 }

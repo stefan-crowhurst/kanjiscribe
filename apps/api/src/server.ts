@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
@@ -11,10 +11,12 @@ import {
   queueSourceSchema,
   updateAssignmentTimeSchema
 } from '@kanjiscribe/shared';
-import Fastify from 'fastify';
+import Fastify, { type FastifyReply } from 'fastify';
 
 import { appConfig, nowIso, todayIsoDate } from './config.js';
 import { sqlite } from './db/client.js';
+
+const isEntry = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
 
 type MatchType = 'exact_spelling' | 'exact_reading' | 'prefix_spelling' | 'prefix_reading';
 
@@ -47,6 +49,21 @@ function isKanjiChar(char: string): boolean {
 function kanjiSvgFilename(char: string): string {
   const codePoint = char.codePointAt(0) ?? 0;
   return codePoint.toString(16).padStart(5, '0').toLowerCase();
+}
+
+function assignmentStatusById(id: number): string | undefined {
+  const row = sqlite
+    .prepare(`SELECT status FROM daily_assignment WHERE id = ?`)
+    .get(id) as { status: string } | undefined;
+  return row?.status;
+}
+
+async function rejectIfArchived(id: number, reply: FastifyReply): Promise<boolean> {
+  if (assignmentStatusById(id) === 'archived') {
+    await reply.status(409).send({ error: 'Assignment is archived' });
+    return true;
+  }
+  return false;
 }
 
 function runMigrationsOnBoot(): void {
@@ -339,6 +356,11 @@ function listAssignments(params: { status?: string; date?: string; backlogOnly?:
   if (params.status) {
     where.push(`da.status = ?`);
     values.push(params.status);
+  } else if (!params.backlogOnly) {
+    // Archived items are excluded from list views by default; callers must
+    // explicitly pass status=archived to retrieve them (mirrors computeQueue's
+    // "status != 'archived'" day-queue filter).
+    where.push(`da.status != 'archived'`);
   }
 
   if (params.date) {
@@ -477,9 +499,11 @@ function computeQueue(assignmentId: number, queueSource?: 'today' | 'backlog') {
   };
 }
 
-runMigrationsOnBoot();
+if (isEntry) {
+  runMigrationsOnBoot();
+}
 
-const app = Fastify({ logger: true });
+const app = Fastify({ logger: isEntry });
 
 await app.register(cors, {
   origin: true
@@ -801,6 +825,10 @@ app.get('/assignments/:id/drill', async (request, reply) => {
     return reply.status(404).send({ error: 'Assignment not found' });
   }
 
+  if (row.status === 'archived') {
+    return reply.status(409).send({ error: 'Assignment is archived' });
+  }
+
   const entry = getEntryDetails(row.dictionary_entry_id);
   if (!entry) {
     return reply.status(404).send({ error: 'Dictionary entry not found' });
@@ -1023,6 +1051,10 @@ app.post('/assignments/:id/complete', async (request, reply) => {
     return reply.status(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid request body' });
   }
 
+  if (await rejectIfArchived(id, reply)) {
+    return;
+  }
+
   const now = nowIso();
   const result = sqlite
     .prepare(
@@ -1059,6 +1091,10 @@ app.post('/assignments/:id/skip', async (request, reply) => {
     return reply.status(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid request body' });
   }
 
+  if (await rejectIfArchived(id, reply)) {
+    return;
+  }
+
   const result = sqlite
     .prepare(
       `
@@ -1089,6 +1125,10 @@ app.post('/assignments/:id/reopen', async (request, reply) => {
     return reply.status(400).send({ error: 'Invalid assignment id' });
   }
 
+  if (await rejectIfArchived(id, reply)) {
+    return;
+  }
+
   const result = sqlite
     .prepare(
       `
@@ -1110,6 +1150,79 @@ app.post('/assignments/:id/reopen', async (request, reply) => {
   return { assignment };
 });
 
+app.post('/assignments/:id/archive', async (request, reply) => {
+  const id = Number((request.params as { id: string }).id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return reply.status(400).send({ error: 'Invalid assignment id' });
+  }
+
+  const row = sqlite
+    .prepare(`SELECT status FROM daily_assignment WHERE id = ?`)
+    .get(id) as { status: string } | undefined;
+
+  if (!row) {
+    return reply.status(404).send({ error: 'Assignment not found' });
+  }
+
+  if (row.status === 'completed') {
+    return reply.status(409).send({ error: 'Completed assignments cannot be archived' });
+  }
+  if (row.status === 'archived') {
+    return reply.status(409).send({ error: 'Assignment is already archived' });
+  }
+
+  sqlite
+    .prepare(
+      `
+      UPDATE daily_assignment
+      SET status = 'archived', completed_at = NULL
+      WHERE id = ?
+      `
+    )
+    .run(id);
+
+  const assignment = sqlite
+    .prepare(`SELECT id, status, time_spent_ms, completed_at FROM daily_assignment WHERE id = ?`)
+    .get(id) as { id: number; status: string; time_spent_ms: number | null; completed_at: string | null };
+
+  return { assignment };
+});
+
+app.post('/assignments/:id/unarchive', async (request, reply) => {
+  const id = Number((request.params as { id: string }).id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return reply.status(400).send({ error: 'Invalid assignment id' });
+  }
+
+  const row = sqlite
+    .prepare(`SELECT status FROM daily_assignment WHERE id = ?`)
+    .get(id) as { status: string } | undefined;
+
+  if (!row) {
+    return reply.status(404).send({ error: 'Assignment not found' });
+  }
+
+  if (row.status !== 'archived') {
+    return reply.status(409).send({ error: 'Only archived assignments can be unarchived' });
+  }
+
+  sqlite
+    .prepare(
+      `
+      UPDATE daily_assignment
+      SET status = 'pending', completed_at = NULL, time_spent_ms = NULL
+      WHERE id = ?
+      `
+    )
+    .run(id);
+
+  const assignment = sqlite
+    .prepare(`SELECT id, status, time_spent_ms, completed_at FROM daily_assignment WHERE id = ?`)
+    .get(id) as { id: number; status: string; time_spent_ms: number | null; completed_at: string | null };
+
+  return { assignment };
+});
+
 app.get('/stats/dashboard', async (request) => {
   const query = request.query as { from?: string; to?: string };
   const to = query.to ?? todayIsoDate();
@@ -1121,12 +1234,12 @@ app.get('/stats/dashboard', async (request) => {
       `
       SELECT
         COUNT(*) AS total,
-        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status IN ('pending', 'skipped') THEN 1 ELSE 0 END) AS pending,
         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
         SUM(COALESCE(time_spent_ms, 0)) AS total_time_ms,
         AVG(CASE WHEN status = 'completed' THEN time_spent_ms END) AS avg_time_per_assignment_ms
       FROM daily_assignment
-      WHERE assigned_for_date = ?
+      WHERE assigned_for_date = ? AND status != 'archived'
       `
     )
     .get(today) as {
@@ -1514,10 +1627,14 @@ process.on('SIGINT', () => {
   void shutdown('SIGINT');
 });
 
-try {
-  await app.listen({ port: appConfig.port, host: appConfig.host });
-  app.log.info(`API server listening on http://${appConfig.host}:${appConfig.port}`);
-} catch (error) {
-  requestLogSafe(error);
-  process.exit(1);
+if (isEntry) {
+  try {
+    await app.listen({ port: appConfig.port, host: appConfig.host });
+    app.log.info(`API server listening on http://${appConfig.host}:${appConfig.port}`);
+  } catch (error) {
+    requestLogSafe(error);
+    process.exit(1);
+  }
 }
+
+export { app };

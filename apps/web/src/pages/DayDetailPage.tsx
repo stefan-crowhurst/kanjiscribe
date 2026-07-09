@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
-import { apiRequest, formatMs, formatShortDate } from '../lib/api.js';
+import { RemoveButton } from '../components/RemoveButton.js';
+import { apiRequest, archiveAssignment, formatMs, formatShortDate } from '../lib/api.js';
 
 type Assignment = {
   id: number;
@@ -47,6 +48,24 @@ export function DayDetailPage() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load day details'));
   }, [date]);
+
+  const handleRemove = useCallback(
+    async (assignment: Assignment) => {
+      try {
+        await archiveAssignment(assignment.id);
+        const [assignmentsRes, statsRes] = await Promise.all([
+          apiRequest<{ assignments: Assignment[] }>(`/assignments?date=${date}`),
+          apiRequest<{ heatmap: DaySummary[] }>(`/stats/dashboard?from=${date}&to=${date}`)
+        ]);
+        setAssignments(assignmentsRes.assignments);
+        const summary = statsRes.heatmap.find((d) => d.date === date);
+        setDaySummary(summary ?? null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to remove assignment');
+      }
+    },
+    [date]
+  );
 
   const sortedAssignments = useMemo(() => {
     if (!assignments) return [];
@@ -144,6 +163,7 @@ export function DayDetailPage() {
                     assignment={assignment}
                     dayDate={date!}
                     isViewOnly={false}
+                    onRemove={handleRemove}
                   />
                 ))}
               </div>
@@ -170,6 +190,7 @@ export function DayDetailPage() {
                     assignment={assignment}
                     dayDate={date!}
                     isViewOnly={true}
+                    onRemove={handleRemove}
                   />
                 ))}
               </div>
@@ -185,20 +206,26 @@ function DayAssignmentCard({
   assignment,
   dayDate,
   allIds,
-  isViewOnly
+  isViewOnly,
+  onRemove
 }: {
   assignment: Assignment;
   dayDate: string;
   allIds?: number[];
   isViewOnly: boolean;
+  onRemove?: (assignment: Assignment) => void;
 }) {
   const isCompleted = assignment.status === 'completed';
   const isSkipped = assignment.status === 'skipped';
-  
+  const isRemovable = assignment.status === 'pending' || assignment.status === 'skipped';
+
   const viewUrl = allIds && allIds.length > 0
     ? `/word/${assignment.id}?day=${dayDate}&ids=${allIds.join(',')}`
     : `/word/${assignment.id}?day=${dayDate}`;
   const drillUrl = `/drill/${assignment.id}?queue_source=today`;
+
+  const removeButton =
+    onRemove && isRemovable ? <RemoveButton onConfirm={() => onRemove(assignment)} /> : null;
 
   return (
     <article className={`card assignment-card ${isCompleted ? 'assignment-card--completed' : ''} ${isSkipped ? 'assignment-card--skipped' : ''}`}>
@@ -235,6 +262,7 @@ function DayAssignmentCard({
           Drill
         </Link>
       )}
+      {removeButton}
     </article>
   );
 }

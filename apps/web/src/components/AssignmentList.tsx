@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 
+import { RemoveButton } from './RemoveButton.js';
 import { formatShortDate } from '../lib/api.js';
 
 type Assignment = {
@@ -18,13 +19,15 @@ export function AssignmentList({
   queueSource,
   getDrillQuery,
   showDrillButton = true,
-  variant
+  variant,
+  onRemove
 }: {
   assignments: Assignment[];
   queueSource?: 'today' | 'backlog';
   getDrillQuery?: (assignment: Assignment) => string;
   showDrillButton?: boolean;
   variant?: 'today';
+  onRemove?: (assignment: Assignment) => void;
 }) {
   if (assignments.length === 0) {
     return <p className="muted">No assignments found.</p>;
@@ -37,6 +40,7 @@ export function AssignmentList({
         const drillPath = `/drill/${assignment.id}${drillQuery}`;
         const isCompleted = assignment.status === 'completed';
         const cardClassName = `card assignment-card ${isCompleted ? 'assignment-card--completed' : ''} ${variant === 'today' && isCompleted ? 'assignment-card--today-completed' : ''}`;
+        const isRemovable = assignment.status === 'pending' || assignment.status === 'skipped';
 
         const content = (
           <div className="assignment-card-content">
@@ -49,6 +53,11 @@ export function AssignmentList({
           </div>
         );
 
+        const removeButton =
+          onRemove && isRemovable ? (
+            <RemoveButton onConfirm={() => onRemove(assignment)} />
+          ) : null;
+
         if (showDrillButton) {
           return (
             <article key={assignment.id} className={cardClassName}>
@@ -58,16 +67,18 @@ export function AssignmentList({
               <Link className="button" to={drillPath}>
                 Drill
               </Link>
+              {removeButton}
             </article>
           );
         }
 
         return (
-          <Link key={assignment.id} className="assignment-card-link assignment-card-link--card" to={drillPath}>
-            <article className={cardClassName}>
+          <article key={assignment.id} className={cardClassName}>
+            <Link className="assignment-card-link assignment-card-link--card" to={drillPath}>
               {content}
-            </article>
-          </Link>
+            </Link>
+            {removeButton}
+          </article>
         );
       })}
     </div>

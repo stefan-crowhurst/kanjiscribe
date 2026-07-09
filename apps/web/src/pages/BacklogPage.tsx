@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { AssignmentList } from '../components/AssignmentList.js';
-import { apiRequest, formatShortDate } from '../lib/api.js';
+import { apiRequest, archiveAssignment, formatShortDate } from '../lib/api.js';
 
 type Assignment = {
   id: number;
@@ -25,6 +25,16 @@ export function BacklogPage() {
     apiRequest<AssignmentsResponse>('/assignments/backlog')
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load backlog'));
+  }, []);
+
+  const handleRemove = useCallback(async (assignment: Assignment) => {
+    try {
+      await archiveAssignment(assignment.id);
+      const refreshed = await apiRequest<AssignmentsResponse>('/assignments/backlog');
+      setData(refreshed);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove assignment');
+    }
   }, []);
 
   const groupedAssignments = useMemo(() => {
@@ -104,7 +114,12 @@ export function BacklogPage() {
                   </Link>
                 </div>
                 {isExpanded ? (
-                  <AssignmentList assignments={group.assignments} getDrillQuery={() => query} showDrillButton={false} />
+                  <AssignmentList
+                    assignments={group.assignments}
+                    getDrillQuery={() => query}
+                    showDrillButton={false}
+                    onRemove={handleRemove}
+                  />
                 ) : null}
               </section>
             );

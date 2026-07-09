@@ -470,8 +470,9 @@ GROUP BY assigned_for_date;
 ```
 
 Notes:
-- `is_fully_completed` = 1 means no pending assignments remain. Archived and skipped assignments do not block completion.
-- A day with only archived assignments will show as `is_fully_completed = 1` with `completed_count = 0`. The frontend heatmap should treat this as an inactive/empty day rather than a "completed" day — use `completed_count > 0 AND is_fully_completed = 1` for the green "done" state.
+- `is_fully_completed` = 1 means the day has at least one `completed` assignment **and** no `pending` or `skipped` assignments. (Migration `0002` tightened this from the legacy rule, which only checked for zero `pending` and let a no-study all-archived day read as "fully completed".)
+- Rows with `status = 'archived'` are excluded from `v_day_summary` entirely; a day reduced to only archived assignments drops out of the view (an "empty day"), so the heatmap renders it as no-activity rather than as a green "done" day.
+- Therefore the frontend no longer needs the `completed_count > 0 AND is_fully_completed = 1` rider; `is_fully_completed` alone is sufficient.
 
 Used by: dashboard heatmap, calendar hover details, completion stats.
 

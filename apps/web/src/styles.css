@@ -1463,3 +1463,26 @@ small {
   color: var(--text-muted);
   font-weight: normal;
 }
+
+.remove-button {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.7rem;
+}
+
+.remove-button--armed {
+  border-color: var(--accent);
+  color: #fff;
+  background: linear-gradient(180deg, #ba4a4a, var(--accent));
+  animation: remove-button-pulse 1s ease-in-out infinite;
+}
+
+@keyframes remove-button-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(125, 47, 47, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(125, 47, 47, 0.15);
+  }
+}
