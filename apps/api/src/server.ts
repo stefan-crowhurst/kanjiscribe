@@ -51,11 +51,34 @@ function kanjiSvgFilename(char: string): string {
   return codePoint.toString(16).padStart(5, '0').toLowerCase();
 }
 
-function assignmentStatusById(id: number): string | undefined {
+type AssignmentStatus = 'pending' | 'completed' | 'skipped' | 'archived';
+
+type AssignmentSummary = {
+  id: number;
+  status: AssignmentStatus;
+  time_spent_ms: number | null;
+  completed_at: string | null;
+};
+
+function assignmentStatusById(id: number): AssignmentStatus | undefined {
   const row = sqlite
     .prepare(`SELECT status FROM daily_assignment WHERE id = ?`)
-    .get(id) as { status: string } | undefined;
+    .get(id) as { status: AssignmentStatus } | undefined;
   return row?.status;
+}
+
+function fetchAssignmentSummary(id: number): AssignmentSummary | undefined {
+  return sqlite
+    .prepare(`SELECT id, status, time_spent_ms, completed_at FROM daily_assignment WHERE id = ?`)
+    .get(id) as AssignmentSummary | undefined;
+}
+
+function parseAssignmentIdParam(params: unknown): number | null {
+  const id = Number((params as { id: string }).id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return null;
+  }
+  return id;
 }
 
 async function rejectIfArchived(id: number, reply: FastifyReply): Promise<boolean> {
@@ -66,19 +89,10 @@ async function rejectIfArchived(id: number, reply: FastifyReply): Promise<boolea
   return false;
 }
 
+import { runMigrationsOnDb } from './db/run-migrations.js';
+
 function runMigrationsOnBoot(): void {
-  const sqlDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'db/sql');
-  if (!fs.existsSync(sqlDir)) {
-    return;
-  }
-  const files = fs
-    .readdirSync(sqlDir)
-    .filter((f) => f.endsWith('.sql'))
-    .sort();
-  for (const file of files) {
-    const sql = fs.readFileSync(path.join(sqlDir, file), 'utf-8');
-    sqlite.exec(sql);
-  }
+  runMigrationsOnDb(sqlite);
 }
 
 function getEntryDetails(entryId: number) {
@@ -543,8 +557,8 @@ app.get('/dictionary/search', async (request, reply) => {
 });
 
 app.get('/dictionary/entries/:id', async (request, reply) => {
-  const id = Number((request.params as { id: string }).id);
-  if (!Number.isInteger(id) || id <= 0) {
+  const id = parseAssignmentIdParam(request.params);
+  if (id === null) {
     return reply.status(400).send({ error: 'Invalid entry id' });
   }
 
@@ -833,8 +847,8 @@ app.get('/assignments/backlog', async () => {
 });
 
 app.get('/assignments/:id/drill', async (request, reply) => {
-  const id = Number((request.params as { id: string }).id);
-  if (!Number.isInteger(id) || id <= 0) {
+  const id = parseAssignmentIdParam(request.params);
+  if (id === null) {
     return reply.status(400).send({ error: 'Invalid assignment id' });
   }
 
@@ -973,8 +987,8 @@ app.get('/assignments/:id/drill', async (request, reply) => {
 });
 
 app.get('/assignments/:id/view', async (request, reply) => {
-  const id = Number((request.params as { id: string }).id);
-  if (!Number.isInteger(id) || id <= 0) {
+  const id = parseAssignmentIdParam(request.params);
+  if (id === null) {
     return reply.status(400).send({ error: 'Invalid assignment id' });
   }
 
@@ -1093,8 +1107,8 @@ app.get('/assignments/:id/view', async (request, reply) => {
 });
 
 app.post('/assignments/:id/complete', async (request, reply) => {
-  const id = Number((request.params as { id: string }).id);
-  if (!Number.isInteger(id) || id <= 0) {
+  const id = parseAssignmentIdParam(request.params);
+  if (id === null) {
     return reply.status(400).send({ error: 'Invalid assignment id' });
   }
 
@@ -1125,16 +1139,13 @@ app.post('/assignments/:id/complete', async (request, reply) => {
     return reply.status(404).send({ error: 'Assignment not found' });
   }
 
-  const assignment = sqlite
-    .prepare(`SELECT id, status, time_spent_ms, completed_at FROM daily_assignment WHERE id = ?`)
-    .get(id) as { id: number; status: string; time_spent_ms: number | null; completed_at: string | null };
-
+  const assignment = fetchAssignmentSummary(id);
   return { assignment };
 });
 
 app.post('/assignments/:id/skip', async (request, reply) => {
-  const id = Number((request.params as { id: string }).id);
-  if (!Number.isInteger(id) || id <= 0) {
+  const id = parseAssignmentIdParam(request.params);
+  if (id === null) {
     return reply.status(400).send({ error: 'Invalid assignment id' });
   }
 
@@ -1164,16 +1175,13 @@ app.post('/assignments/:id/skip', async (request, reply) => {
     return reply.status(404).send({ error: 'Assignment not found' });
   }
 
-  const assignment = sqlite
-    .prepare(`SELECT id, status, time_spent_ms, completed_at FROM daily_assignment WHERE id = ?`)
-    .get(id) as { id: number; status: string; time_spent_ms: number | null; completed_at: string | null };
-
+  const assignment = fetchAssignmentSummary(id);
   return { assignment };
 });
 
 app.post('/assignments/:id/reopen', async (request, reply) => {
-  const id = Number((request.params as { id: string }).id);
-  if (!Number.isInteger(id) || id <= 0) {
+  const id = parseAssignmentIdParam(request.params);
+  if (id === null) {
     return reply.status(400).send({ error: 'Invalid assignment id' });
   }
 
@@ -1195,23 +1203,17 @@ app.post('/assignments/:id/reopen', async (request, reply) => {
     return reply.status(404).send({ error: 'Assignment not found' });
   }
 
-  const assignment = sqlite
-    .prepare(`SELECT id, status, time_spent_ms, completed_at FROM daily_assignment WHERE id = ?`)
-    .get(id) as { id: number; status: string; time_spent_ms: number | null; completed_at: string | null };
-
+  const assignment = fetchAssignmentSummary(id);
   return { assignment };
 });
 
 app.post('/assignments/:id/archive', async (request, reply) => {
-  const id = Number((request.params as { id: string }).id);
-  if (!Number.isInteger(id) || id <= 0) {
+  const id = parseAssignmentIdParam(request.params);
+  if (id === null) {
     return reply.status(400).send({ error: 'Invalid assignment id' });
   }
 
-  const row = sqlite
-    .prepare(`SELECT status FROM daily_assignment WHERE id = ?`)
-    .get(id) as { status: string } | undefined;
-
+  const row = fetchAssignmentSummary(id);
   if (!row) {
     return reply.status(404).send({ error: 'Assignment not found' });
   }
@@ -1227,29 +1229,23 @@ app.post('/assignments/:id/archive', async (request, reply) => {
     .prepare(
       `
       UPDATE daily_assignment
-      SET status = 'archived', completed_at = NULL
+      SET status = 'archived', completed_at = NULL, time_spent_ms = NULL
       WHERE id = ?
       `
     )
     .run(id);
 
-  const assignment = sqlite
-    .prepare(`SELECT id, status, time_spent_ms, completed_at FROM daily_assignment WHERE id = ?`)
-    .get(id) as { id: number; status: string; time_spent_ms: number | null; completed_at: string | null };
-
+  const assignment = fetchAssignmentSummary(id);
   return { assignment };
 });
 
 app.post('/assignments/:id/unarchive', async (request, reply) => {
-  const id = Number((request.params as { id: string }).id);
-  if (!Number.isInteger(id) || id <= 0) {
+  const id = parseAssignmentIdParam(request.params);
+  if (id === null) {
     return reply.status(400).send({ error: 'Invalid assignment id' });
   }
 
-  const row = sqlite
-    .prepare(`SELECT status FROM daily_assignment WHERE id = ?`)
-    .get(id) as { status: string } | undefined;
-
+  const row = fetchAssignmentSummary(id);
   if (!row) {
     return reply.status(404).send({ error: 'Assignment not found' });
   }
@@ -1268,10 +1264,7 @@ app.post('/assignments/:id/unarchive', async (request, reply) => {
     )
     .run(id);
 
-  const assignment = sqlite
-    .prepare(`SELECT id, status, time_spent_ms, completed_at FROM daily_assignment WHERE id = ?`)
-    .get(id) as { id: number; status: string; time_spent_ms: number | null; completed_at: string | null };
-
+  const assignment = fetchAssignmentSummary(id);
   return { assignment };
 });
 
@@ -1323,6 +1316,7 @@ app.get('/stats/dashboard', async (request) => {
         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS total_completed,
         AVG(CASE WHEN status = 'completed' THEN time_spent_ms END) AS avg_time_per_assignment_ms
       FROM daily_assignment
+      WHERE status != 'archived'
       `
     )
     .get() as {

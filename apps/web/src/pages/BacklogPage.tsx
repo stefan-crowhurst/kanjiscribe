@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { AssignmentList } from '../components/AssignmentList.js';
-import { apiRequest, archiveAssignment, formatShortDate } from '../lib/api.js';
+import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
+import { apiRequest, formatShortDate } from '../lib/api.js';
 
 type Assignment = {
   id: number;
@@ -21,21 +22,16 @@ export function BacklogPage() {
   const [error, setError] = useState<string | null>(null);
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    apiRequest<AssignmentsResponse>('/assignments/backlog')
-      .then(setData)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load backlog'));
+  const refresh = useCallback(async () => {
+    const refreshed = await apiRequest<AssignmentsResponse>('/assignments/backlog');
+    setData(refreshed);
   }, []);
 
-  const handleRemove = useCallback(async (assignment: Assignment) => {
-    try {
-      await archiveAssignment(assignment.id);
-      const refreshed = await apiRequest<AssignmentsResponse>('/assignments/backlog');
-      setData(refreshed);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove assignment');
-    }
-  }, []);
+  useEffect(() => {
+    refresh().catch((err) => setError(err instanceof Error ? err.message : 'Failed to load backlog'));
+  }, [refresh]);
+
+  const handleRemove = useArchiveRemoval(refresh, setError);
 
   const groupedAssignments = useMemo(() => {
     const groups = new Map<string, Assignment[]>();
@@ -117,7 +113,6 @@ export function BacklogPage() {
                   <AssignmentList
                     assignments={group.assignments}
                     getDrillQuery={() => query}
-                    showDrillButton={false}
                     onRemove={handleRemove}
                   />
                 ) : null}

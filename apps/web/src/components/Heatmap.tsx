@@ -50,7 +50,7 @@ function getTone(day: HeatmapDay | undefined, maxCompleted: number): string {
     return 'skipped';
   }
 
-  if (day.completed_count <= 0 || !day.is_fully_completed) {
+  if (!day.is_fully_completed) {
     return 'none';
   }
 

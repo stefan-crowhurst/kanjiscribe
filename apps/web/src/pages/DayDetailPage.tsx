@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { RemoveButton } from '../components/RemoveButton.js';
-import { apiRequest, archiveAssignment, formatMs } from '../lib/api.js';
+import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
+import { apiRequest, formatMs } from '../lib/api.js';
 
 type Assignment = {
   id: number;
@@ -32,40 +33,25 @@ export function DayDetailPage() {
   const [daySummary, setDaySummary] = useState<DaySummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const refresh = useCallback(async () => {
     if (!date) {
       return;
     }
 
-    Promise.all([
+    const [assignmentsRes, statsRes] = await Promise.all([
       apiRequest<{ assignments: Assignment[] }>(`/assignments?date=${date}`),
       apiRequest<{ heatmap: DaySummary[] }>(`/stats/dashboard?from=${date}&to=${date}`)
-    ])
-      .then(([assignmentsRes, statsRes]) => {
-        setAssignments(assignmentsRes.assignments);
-        const summary = statsRes.heatmap.find((d) => d.date === date);
-        setDaySummary(summary ?? null);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load day details'));
+    ]);
+    setAssignments(assignmentsRes.assignments);
+    const summary = statsRes.heatmap.find((d) => d.date === date);
+    setDaySummary(summary ?? null);
   }, [date]);
 
-  const handleRemove = useCallback(
-    async (assignment: Assignment) => {
-      try {
-        await archiveAssignment(assignment.id);
-        const [assignmentsRes, statsRes] = await Promise.all([
-          apiRequest<{ assignments: Assignment[] }>(`/assignments?date=${date}`),
-          apiRequest<{ heatmap: DaySummary[] }>(`/stats/dashboard?from=${date}&to=${date}`)
-        ]);
-        setAssignments(assignmentsRes.assignments);
-        const summary = statsRes.heatmap.find((d) => d.date === date);
-        setDaySummary(summary ?? null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to remove assignment');
-      }
-    },
-    [date]
-  );
+  useEffect(() => {
+    refresh().catch((err) => setError(err instanceof Error ? err.message : 'Failed to load day details'));
+  }, [refresh]);
+
+  const handleRemove = useArchiveRemoval(refresh, setError);
 
   const sortedAssignments = useMemo(() => {
     if (!assignments) return [];

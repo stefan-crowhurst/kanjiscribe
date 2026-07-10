@@ -65,4 +65,23 @@ describe('GET /stats/dashboard today counts exclude archived assignments', () =>
     const body = JSON.parse(res.body) as { today: { total: number } };
     expect(body.today.total).toBe(0);
   });
+
+  it('totals exclude archived assignments', async () => {
+    const studyItemId = seedStudyItem();
+    const today = new Date().toISOString().slice(0, 10);
+    seedAssignment({ study_item_id: studyItemId, status: 'completed', assigned_for_date: today, time_spent_ms: 1000 });
+    seedAssignment({ study_item_id: studyItemId, status: 'archived', assigned_for_date: today, time_spent_ms: 9999 });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/stats/dashboard?from=${today}&to=${today}`
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as {
+      totals: { total_time_ms: number; total_completed: number };
+    };
+    expect(body.totals.total_time_ms).toBe(1000);
+    expect(body.totals.total_completed).toBe(1);
+  });
 });
