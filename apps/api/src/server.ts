@@ -677,11 +677,60 @@ app.post('/study-items/intake', async (request, reply) => {
     } | undefined;
 
     if (existingAssignment) {
-      // Assignment already exists, return 409 conflict
-      return reply.status(409).send({ 
-        error: 'Assignment already exists for this word and date',
-        assignment: existingAssignment
-      });
+      if (existingAssignment.status === 'archived') {
+        // Re-adding a previously-removed word: unarchive it instead of erroring.
+        sqlite
+          .prepare(
+            `
+            UPDATE daily_assignment
+            SET status = 'pending', completed_at = NULL, time_spent_ms = NULL
+            WHERE id = ?
+            `
+          )
+          .run(existingAssignment.id);
+
+        const assignment = sqlite
+          .prepare(
+            `
+            SELECT id, study_item_id, assigned_for_date, status, origin, created_at
+            FROM daily_assignment
+            WHERE id = ?
+            `
+          )
+          .get(existingAssignment.id) as {
+          id: number;
+          study_item_id: number;
+          assigned_for_date: string;
+          status: string;
+          origin: string;
+          created_at: string;
+        };
+
+        return {
+          status: 200,
+          body: {
+            study_item: {
+              id: studyItem.id,
+              surface_form: studyItem.surface_form,
+              selected_reading: studyItem.selected_reading,
+              dictionary_entry_id: studyItem.dictionary_entry_id,
+              source_type: studyItem.source_type,
+              created_at: studyItem.created_at,
+              is_new: isNew
+            },
+            assignment
+          }
+        };
+      }
+
+      // Assignment in a non-archived state already exists, return 409 conflict
+      return {
+        status: 409,
+        body: {
+          error: 'Assignment already exists for this word and date',
+          assignment: existingAssignment
+        }
+      };
     }
 
     const assignmentResult = sqlite
@@ -720,21 +769,24 @@ app.post('/study-items/intake', async (request, reply) => {
     };
 
     return {
-      study_item: {
-        id: studyItem.id,
-        surface_form: studyItem.surface_form,
-        selected_reading: studyItem.selected_reading,
-        dictionary_entry_id: studyItem.dictionary_entry_id,
-        source_type: studyItem.source_type,
-        created_at: studyItem.created_at,
-        is_new: isNew
-      },
-      assignment
+      status: 201,
+      body: {
+        study_item: {
+          id: studyItem.id,
+          surface_form: studyItem.surface_form,
+          selected_reading: studyItem.selected_reading,
+          dictionary_entry_id: studyItem.dictionary_entry_id,
+          source_type: studyItem.source_type,
+          created_at: studyItem.created_at,
+          is_new: isNew
+        },
+        assignment
+      }
     };
   });
 
   const result = transaction();
-  return reply.status(201).send(result);
+  return reply.status(result.status).send(result.body);
 });
 
 app.get('/assignments', async (request, reply) => {
