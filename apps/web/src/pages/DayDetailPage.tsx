@@ -124,7 +124,7 @@ export function DayDetailPage() {
         <div>
           <h2>{formatDate(date!)}</h2>
           <p className="muted">
-            {daySummary.completed_count}/{daySummary.total_assignments} completed, {daySummary.pending_count} pending, {daySummary.skipped_count} skipped
+            {daySummary.completed_count}/{daySummary.total_assignments} completed, {daySummary.pending_count + daySummary.skipped_count} remaining
             {daySummary.total_time_ms > 0 && (
               <span> • Total time: {formatMs(daySummary.total_time_ms)}</span>
             )}

@@ -81,10 +81,11 @@ export function TodayPage() {
 
   const completed = dayStats?.completed_count ?? 0;
   const total = dayStats?.total_assignments ?? assignments?.length ?? 0;
-  const pendingAssignments = assignments?.filter((a) => a.status === 'pending') ?? [];
-  const remaining = pendingAssignments.length;
+  const unfinishedAssignments =
+    assignments?.filter((a) => a.status === 'pending' || a.status === 'skipped') ?? [];
+  const remaining = unfinishedAssignments.length;
 
-  const firstPendingId = pendingAssignments[0]?.id;
+  const firstUnfinishedId = unfinishedAssignments[0]?.id;
 
   return (
     <section>
@@ -95,8 +96,8 @@ export function TodayPage() {
             {completed}/{total} drilled, {remaining} remaining
           </p>
         </div>
-        {firstPendingId ? (
-          <Link className="button button-today" to={`/drill/${firstPendingId}?queue_source=today`}>
+        {firstUnfinishedId ? (
+          <Link className="button button-today" to={`/drill/${firstUnfinishedId}?queue_source=today`}>
             Drill
           </Link>
         ) : null}
