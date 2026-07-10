@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 import { RemoveButton } from './RemoveButton.js';
 import { formatShortDate } from '../lib/api.js';
@@ -29,6 +29,8 @@ export function AssignmentList({
   variant?: 'today';
   onRemove?: (assignment: Assignment) => void;
 }) {
+  const navigate = useNavigate();
+
   if (assignments.length === 0) {
     return <p className="muted">No assignments found.</p>;
   }
@@ -41,6 +43,7 @@ export function AssignmentList({
         const isCompleted = assignment.status === 'completed';
         const cardClassName = `card assignment-card ${isCompleted ? 'assignment-card--completed' : ''} ${variant === 'today' && isCompleted ? 'assignment-card--today-completed' : ''}`;
         const isRemovable = assignment.status === 'pending' || assignment.status === 'skipped';
+        const hasButton = showDrillButton || (onRemove && isRemovable);
 
         const content = (
           <div className="assignment-card-content">
@@ -58,25 +61,38 @@ export function AssignmentList({
             <RemoveButton onConfirm={() => onRemove(assignment)} />
           ) : null;
 
-        if (showDrillButton) {
+        if (!hasButton) {
           return (
-            <article key={assignment.id} className={cardClassName}>
-              <Link className="assignment-card-link" to={drillPath}>
-                {content}
-              </Link>
-              <Link className="button" to={drillPath}>
-                Drill
-              </Link>
-              {removeButton}
+            <article
+              key={assignment.id}
+              className={cardClassName}
+              style={{ cursor: 'pointer' }}
+              onClick={() => navigate(drillPath)}
+            >
+              {content}
             </article>
           );
         }
 
         return (
-          <article key={assignment.id} className={cardClassName}>
-            <Link className="assignment-card-link assignment-card-link--card" to={drillPath}>
-              {content}
-            </Link>
+          <article
+            key={assignment.id}
+            className={cardClassName}
+            style={{ cursor: 'pointer' }}
+            onClick={() => navigate(drillPath)}
+          >
+            {content}
+            {showDrillButton ? (
+              <button
+                className="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  navigate(drillPath);
+                }}
+              >
+                Drill
+              </button>
+            ) : null}
             {removeButton}
           </article>
         );
