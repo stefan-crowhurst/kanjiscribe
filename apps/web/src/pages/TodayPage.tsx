@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { AssignmentList } from '../components/AssignmentList.js';
+import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
 import { apiRequest, todayDateString } from '../lib/api.js';
 
 type Assignment = {
@@ -32,35 +33,38 @@ export function TodayPage() {
   const [dayStats, setDayStats] = useState<DayStats | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const refresh = useCallback(async () => {
     const today = todayDateString();
-
-    Promise.all([
+    const [assignmentsRes, statsRes] = await Promise.all([
       apiRequest<{ assignments: Assignment[] }>(`/assignments?date=${today}`),
       apiRequest<{ heatmap: DaySummaryResponse[] }>(`/stats/dashboard?from=${today}&to=${today}`)
-    ])
-      .then(([assignmentsRes, statsRes]) => {
-        setAssignments(assignmentsRes.assignments);
-        const todayStats = statsRes.heatmap.find((d) => d.date === today);
-        setDayStats(
-          todayStats
-            ? {
-                total_assignments: todayStats.total_assignments,
-                completed_count: todayStats.completed_count,
-                pending_count: todayStats.pending_count
-              }
-            : null
-        );
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load today assignments'));
+    ]);
+    setAssignments(assignmentsRes.assignments);
+    const todayStats = statsRes.heatmap.find((d) => d.date === today);
+    setDayStats(
+      todayStats
+        ? {
+            total_assignments: todayStats.total_assignments,
+            completed_count: todayStats.completed_count,
+            pending_count: todayStats.pending_count
+          }
+        : null
+    );
   }, []);
+
+  useEffect(() => {
+    refresh().catch((err) => setError(err instanceof Error ? err.message : 'Failed to load today assignments'));
+  }, [refresh]);
+
+  const handleRemove = useArchiveRemoval(refresh, setError);
 
   const completed = dayStats?.completed_count ?? 0;
   const total = dayStats?.total_assignments ?? assignments?.length ?? 0;
-  const pendingAssignments = assignments?.filter((a) => a.status === 'pending') ?? [];
-  const remaining = pendingAssignments.length;
+  const unfinishedAssignments =
+    assignments?.filter((a) => a.status === 'pending' || a.status === 'skipped') ?? [];
+  const remaining = unfinishedAssignments.length;
 
-  const firstPendingId = pendingAssignments[0]?.id;
+  const firstUnfinishedId = unfinishedAssignments[0]?.id;
 
   return (
     <section>
@@ -71,14 +75,19 @@ export function TodayPage() {
             {completed}/{total} drilled, {remaining} remaining
           </p>
         </div>
-        {firstPendingId ? (
-          <Link className="button button-today" to={`/drill/${firstPendingId}?queue_source=today`}>
+        {firstUnfinishedId ? (
+          <Link className="button button-today" to={`/drill/${firstUnfinishedId}?queue_source=today`}>
             Drill
           </Link>
         ) : null}
       </div>
       {error ? <p className="error">{error}</p> : null}
-      <AssignmentList assignments={assignments ?? []} queueSource="today" showDrillButton={false} variant="today" />
+      <AssignmentList
+        assignments={assignments ?? []}
+        queueSource="today"
+        variant="today"
+        onRemove={handleRemove}
+      />
     </section>
   );
 }

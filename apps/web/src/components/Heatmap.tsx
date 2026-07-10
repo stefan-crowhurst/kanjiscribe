@@ -50,7 +50,7 @@ function getTone(day: HeatmapDay | undefined, maxCompleted: number): string {
     return 'skipped';
   }
 
-  if (day.completed_count <= 0 || !day.is_fully_completed) {
+  if (!day.is_fully_completed) {
     return 'none';
   }
 
@@ -168,7 +168,7 @@ export function Heatmap({ days, from, to }: { days: HeatmapDay[]; from: string; 
 
     if (activeDay.pending_count > 0 || activeDay.skipped_count > 0) {
       return {
-        title: `${activeDay.total_assignments} assigned (${activeDay.pending_count} pending, ${activeDay.skipped_count} skipped)`,
+        title: `${activeDay.total_assignments} assigned (${activeDay.pending_count + activeDay.skipped_count} remaining)`,
         subtitle: activeDateLabel,
         detail: activeDay.total_time_ms > 0 ? `in ${formatDuration(activeDay.total_time_ms)}` : null
       };
@@ -307,7 +307,7 @@ export function Heatmap({ days, from, to }: { days: HeatmapDay[]; from: string; 
                         setTooltipFromCell(event.currentTarget);
                       }
                     }}
-                    aria-label={`${dateString}: ${day?.completed_count ?? 0} completed, ${day?.pending_count ?? 0} pending`}
+                    aria-label={`${dateString}: ${day?.completed_count ?? 0} completed, ${(day?.pending_count ?? 0) + (day?.skipped_count ?? 0)} remaining`}
                   />
                 );
               })}

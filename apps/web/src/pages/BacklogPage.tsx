@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { AssignmentList } from '../components/AssignmentList.js';
+import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
 import { apiRequest, formatShortDate } from '../lib/api.js';
 
 type Assignment = {
@@ -21,11 +22,16 @@ export function BacklogPage() {
   const [error, setError] = useState<string | null>(null);
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    apiRequest<AssignmentsResponse>('/assignments/backlog')
-      .then(setData)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load backlog'));
+  const refresh = useCallback(async () => {
+    const refreshed = await apiRequest<AssignmentsResponse>('/assignments/backlog');
+    setData(refreshed);
   }, []);
+
+  useEffect(() => {
+    refresh().catch((err) => setError(err instanceof Error ? err.message : 'Failed to load backlog'));
+  }, [refresh]);
+
+  const handleRemove = useArchiveRemoval(refresh, setError);
 
   const groupedAssignments = useMemo(() => {
     const groups = new Map<string, Assignment[]>();
@@ -104,7 +110,11 @@ export function BacklogPage() {
                   </Link>
                 </div>
                 {isExpanded ? (
-                  <AssignmentList assignments={group.assignments} getDrillQuery={() => query} showDrillButton={false} />
+                  <AssignmentList
+                    assignments={group.assignments}
+                    getDrillQuery={() => query}
+                    onRemove={handleRemove}
+                  />
                 ) : null}
               </section>
             );

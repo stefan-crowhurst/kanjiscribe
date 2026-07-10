@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 
-import { apiRequest, formatMs, formatShortDate } from '../lib/api.js';
+import { RemoveButton } from '../components/RemoveButton.js';
+import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
+import { apiRequest, formatMs } from '../lib/api.js';
 
 type Assignment = {
   id: number;
@@ -31,22 +33,25 @@ export function DayDetailPage() {
   const [daySummary, setDaySummary] = useState<DaySummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const refresh = useCallback(async () => {
     if (!date) {
       return;
     }
 
-    Promise.all([
+    const [assignmentsRes, statsRes] = await Promise.all([
       apiRequest<{ assignments: Assignment[] }>(`/assignments?date=${date}`),
       apiRequest<{ heatmap: DaySummary[] }>(`/stats/dashboard?from=${date}&to=${date}`)
-    ])
-      .then(([assignmentsRes, statsRes]) => {
-        setAssignments(assignmentsRes.assignments);
-        const summary = statsRes.heatmap.find((d) => d.date === date);
-        setDaySummary(summary ?? null);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load day details'));
+    ]);
+    setAssignments(assignmentsRes.assignments);
+    const summary = statsRes.heatmap.find((d) => d.date === date);
+    setDaySummary(summary ?? null);
   }, [date]);
+
+  useEffect(() => {
+    refresh().catch((err) => setError(err instanceof Error ? err.message : 'Failed to load day details'));
+  }, [refresh]);
+
+  const handleRemove = useArchiveRemoval(refresh, setError);
 
   const sortedAssignments = useMemo(() => {
     if (!assignments) return [];
@@ -82,6 +87,11 @@ export function DayDetailPage() {
     [pendingAssignments]
   );
 
+  const remainingAssignments = useMemo(
+    () => [...pendingAssignments, ...skippedAssignments],
+    [pendingAssignments, skippedAssignments]
+  );
+
   if (error) {
     return <p className="error">{error}</p>;
   }
@@ -105,7 +115,7 @@ export function DayDetailPage() {
         <div>
           <h2>{formatDate(date!)}</h2>
           <p className="muted">
-            {daySummary.completed_count}/{daySummary.total_assignments} completed, {daySummary.pending_count} pending, {daySummary.skipped_count} skipped
+            {daySummary.completed_count}/{daySummary.total_assignments} completed, {remainingAssignments.length} remaining
             {daySummary.total_time_ms > 0 && (
               <span> • Total time: {formatMs(daySummary.total_time_ms)}</span>
             )}
@@ -127,51 +137,32 @@ export function DayDetailPage() {
                     assignment={assignment}
                     dayDate={date!}
                     allIds={completedIds}
-                    isViewOnly={true}
                   />
                 ))}
               </div>
             </section>
           )}
 
-          {pendingAssignments.length > 0 && (
+          {remainingAssignments.length > 0 && (
             <section className="day-assignment-group">
-              <h3>Pending ({pendingAssignments.length})</h3>
+              <h3>Remaining ({remainingAssignments.length})</h3>
               <div className="assignment-list">
-                {pendingAssignments.map((assignment) => (
+                {remainingAssignments.map((assignment) => (
                   <DayAssignmentCard
                     key={assignment.id}
                     assignment={assignment}
                     dayDate={date!}
-                    isViewOnly={false}
+                    onRemove={handleRemove}
                   />
                 ))}
               </div>
-              {pendingAssignments.length > 0 && (
-                <div className="day-drill-actions">
-                  <Link 
-                    className="button button-today" 
-                    to={`/drill/${pendingAssignments[0]!.id}?queue_source=today`}
-                  >
-                    Drill pending words
-                  </Link>
-                </div>
-              )}
-            </section>
-          )}
-
-          {skippedAssignments.length > 0 && (
-            <section className="day-assignment-group">
-              <h3>Skipped ({skippedAssignments.length})</h3>
-              <div className="assignment-list">
-                {skippedAssignments.map((assignment) => (
-                  <DayAssignmentCard
-                    key={assignment.id}
-                    assignment={assignment}
-                    dayDate={date!}
-                    isViewOnly={true}
-                  />
-                ))}
+              <div className="day-drill-actions">
+                <Link 
+                  className="button button-today" 
+                  to={`/drill/${remainingAssignments[0]!.id}?queue_source=today`}
+                >
+                  Drill remaining words
+                </Link>
               </div>
             </section>
           )}
@@ -185,56 +176,46 @@ function DayAssignmentCard({
   assignment,
   dayDate,
   allIds,
-  isViewOnly
+  onRemove
 }: {
   assignment: Assignment;
   dayDate: string;
   allIds?: number[];
-  isViewOnly: boolean;
+  onRemove?: (assignment: Assignment) => void;
 }) {
+  const navigate = useNavigate();
   const isCompleted = assignment.status === 'completed';
   const isSkipped = assignment.status === 'skipped';
-  
+  const isPending = assignment.status === 'pending';
+  const isRemovable = isPending || isSkipped;
+
   const viewUrl = allIds && allIds.length > 0
     ? `/word/${assignment.id}?day=${dayDate}&ids=${allIds.join(',')}`
     : `/word/${assignment.id}?day=${dayDate}`;
   const drillUrl = `/drill/${assignment.id}?queue_source=today`;
+  const cardUrl = isPending ? drillUrl : viewUrl;
+
+  const removeButton =
+    onRemove && isRemovable ? <RemoveButton onConfirm={() => onRemove(assignment)} /> : null;
 
   return (
-    <article className={`card assignment-card ${isCompleted ? 'assignment-card--completed' : ''} ${isSkipped ? 'assignment-card--skipped' : ''}`}>
-      {isViewOnly ? (
-        <Link className="assignment-card-link" to={viewUrl}>
-          <div className="assignment-card-content">
-            <strong>{assignment.study_item.surface_form}</strong>
-            <p className="kana">{assignment.study_item.selected_reading}</p>
-            <p>{assignment.study_item.first_gloss ?? 'No gloss available'}</p>
-            <small>
-              {isCompleted && assignment.time_spent_ms !== null && (
-                <span>Time: {formatMs(assignment.time_spent_ms)} • </span>
-              )}
-              {assignment.status}
-            </small>
-          </div>
-        </Link>
-      ) : (
-        <Link className="assignment-card-link" to={drillUrl}>
-          <div className="assignment-card-content">
-            <strong>{assignment.study_item.surface_form}</strong>
-            <p className="kana">{assignment.study_item.selected_reading}</p>
-            <p>{assignment.study_item.first_gloss ?? 'No gloss available'}</p>
-            <small>{assignment.status}</small>
-          </div>
-        </Link>
-      )}
-      {isViewOnly ? (
-        <Link className="button" to={viewUrl}>
-          View
-        </Link>
-      ) : (
-        <Link className="button" to={drillUrl}>
-          Drill
-        </Link>
-      )}
+    <article
+      className={`card assignment-card ${isCompleted ? 'assignment-card--completed' : ''} ${isSkipped ? 'assignment-card--skipped' : ''}`}
+      style={{ cursor: 'pointer' }}
+      onClick={() => navigate(cardUrl)}
+    >
+      <div className="assignment-card-content">
+        <strong>{assignment.study_item.surface_form}</strong>
+        <p className="kana">{assignment.study_item.selected_reading}</p>
+        <p>{assignment.study_item.first_gloss ?? 'No gloss available'}</p>
+        <small>
+          {isCompleted && assignment.time_spent_ms !== null && (
+            <span>Time: {formatMs(assignment.time_spent_ms)} • </span>
+          )}
+          {assignment.status}
+        </small>
+      </div>
+      {removeButton}
     </article>
   );
 }

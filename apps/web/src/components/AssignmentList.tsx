@@ -1,5 +1,6 @@
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
+import { RemoveButton } from './RemoveButton.js';
 import { formatShortDate } from '../lib/api.js';
 
 type Assignment = {
@@ -17,15 +18,17 @@ export function AssignmentList({
   assignments,
   queueSource,
   getDrillQuery,
-  showDrillButton = true,
-  variant
+  variant,
+  onRemove
 }: {
   assignments: Assignment[];
   queueSource?: 'today' | 'backlog';
   getDrillQuery?: (assignment: Assignment) => string;
-  showDrillButton?: boolean;
   variant?: 'today';
+  onRemove?: (assignment: Assignment) => void;
 }) {
+  const navigate = useNavigate();
+
   if (assignments.length === 0) {
     return <p className="muted">No assignments found.</p>;
   }
@@ -33,41 +36,35 @@ export function AssignmentList({
   return (
     <div className={`assignment-list ${variant === 'today' ? 'assignment-list--today' : ''}`}>
       {assignments.map((assignment) => {
-        const drillQuery = getDrillQuery?.(assignment) ?? (queueSource ? `?queue_source=${queueSource}` : '');
-        const drillPath = `/drill/${assignment.id}${drillQuery}`;
+        const isPending = assignment.status === 'pending';
         const isCompleted = assignment.status === 'completed';
+        const isRemovable = isPending || assignment.status === 'skipped';
         const cardClassName = `card assignment-card ${isCompleted ? 'assignment-card--completed' : ''} ${variant === 'today' && isCompleted ? 'assignment-card--today-completed' : ''}`;
 
-        const content = (
-          <div className="assignment-card-content">
-            <strong>{assignment.study_item.surface_form}</strong>
-            <p className="kana">{assignment.study_item.selected_reading}</p>
-            <p>{assignment.study_item.first_gloss ?? 'No gloss available'}</p>
-            <small>
-              {formatShortDate(assignment.assigned_for_date)} - {assignment.status}
-            </small>
-          </div>
-        );
-
-        if (showDrillButton) {
-          return (
-            <article key={assignment.id} className={cardClassName}>
-              <Link className="assignment-card-link" to={drillPath}>
-                {content}
-              </Link>
-              <Link className="button" to={drillPath}>
-                Drill
-              </Link>
-            </article>
-          );
-        }
+        const drillQuery = getDrillQuery?.(assignment) ?? (queueSource ? `?queue_source=${queueSource}` : '');
+        const drillPath = `/drill/${assignment.id}${drillQuery}`;
+        const viewPath = `/word/${assignment.id}?day=${assignment.assigned_for_date}`;
+        const cardUrl = isPending ? drillPath : viewPath;
 
         return (
-          <Link key={assignment.id} className="assignment-card-link assignment-card-link--card" to={drillPath}>
-            <article className={cardClassName}>
-              {content}
-            </article>
-          </Link>
+          <article
+            key={assignment.id}
+            className={cardClassName}
+            style={{ cursor: 'pointer' }}
+            onClick={() => navigate(cardUrl)}
+          >
+            <div className="assignment-card-content">
+              <strong>{assignment.study_item.surface_form}</strong>
+              <p className="kana">{assignment.study_item.selected_reading}</p>
+              <p>{assignment.study_item.first_gloss ?? 'No gloss available'}</p>
+              <small>
+                {formatShortDate(assignment.assigned_for_date)} - {assignment.status}
+              </small>
+            </div>
+            {onRemove && isRemovable ? (
+              <RemoveButton onConfirm={() => onRemove(assignment)} />
+            ) : null}
+          </article>
         );
       })}
     </div>

@@ -136,7 +136,7 @@ export function DashboardPage() {
           <h2>Today</h2>
           <p>{data.today.total} assignments</p>
           <small>
-            {data.today.completed} completed, {data.today.pending} pending
+            {data.today.completed} completed, {data.today.pending} remaining
           </small>
         </article>
         <article className="card stat-card">

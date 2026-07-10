@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
@@ -11,10 +11,12 @@ import {
   queueSourceSchema,
   updateAssignmentTimeSchema
 } from '@kanjiscribe/shared';
-import Fastify from 'fastify';
+import Fastify, { type FastifyReply } from 'fastify';
 
 import { appConfig, nowIso, todayIsoDate } from './config.js';
 import { sqlite } from './db/client.js';
+
+const isEntry = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
 
 type MatchType = 'exact_spelling' | 'exact_reading' | 'prefix_spelling' | 'prefix_reading';
 
@@ -49,19 +51,48 @@ function kanjiSvgFilename(char: string): string {
   return codePoint.toString(16).padStart(5, '0').toLowerCase();
 }
 
+type AssignmentStatus = 'pending' | 'completed' | 'skipped' | 'archived';
+
+type AssignmentSummary = {
+  id: number;
+  status: AssignmentStatus;
+  time_spent_ms: number | null;
+  completed_at: string | null;
+};
+
+function assignmentStatusById(id: number): AssignmentStatus | undefined {
+  const row = sqlite
+    .prepare(`SELECT status FROM daily_assignment WHERE id = ?`)
+    .get(id) as { status: AssignmentStatus } | undefined;
+  return row?.status;
+}
+
+function fetchAssignmentSummary(id: number): AssignmentSummary | undefined {
+  return sqlite
+    .prepare(`SELECT id, status, time_spent_ms, completed_at FROM daily_assignment WHERE id = ?`)
+    .get(id) as AssignmentSummary | undefined;
+}
+
+function parseAssignmentIdParam(params: unknown): number | null {
+  const id = Number((params as { id: string }).id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return null;
+  }
+  return id;
+}
+
+async function rejectIfArchived(id: number, reply: FastifyReply): Promise<boolean> {
+  if (assignmentStatusById(id) === 'archived') {
+    await reply.status(409).send({ error: 'Assignment is archived' });
+    return true;
+  }
+  return false;
+}
+
+import { runMigrationsOnDb } from './db/run-migrations.js';
+
 function runMigrationsOnBoot(): void {
-  const sqlDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'db/sql');
-  if (!fs.existsSync(sqlDir)) {
-    return;
-  }
-  const files = fs
-    .readdirSync(sqlDir)
-    .filter((f) => f.endsWith('.sql'))
-    .sort();
-  for (const file of files) {
-    const sql = fs.readFileSync(path.join(sqlDir, file), 'utf-8');
-    sqlite.exec(sql);
-  }
+  runMigrationsOnDb(sqlite);
 }
 
 function getEntryDetails(entryId: number) {
@@ -339,6 +370,11 @@ function listAssignments(params: { status?: string; date?: string; backlogOnly?:
   if (params.status) {
     where.push(`da.status = ?`);
     values.push(params.status);
+  } else if (!params.backlogOnly) {
+    // Archived items are excluded from list views by default; callers must
+    // explicitly pass status=archived to retrieve them (mirrors computeQueue's
+    // "status != 'archived'" day-queue filter).
+    where.push(`da.status != 'archived'`);
   }
 
   if (params.date) {
@@ -477,9 +513,11 @@ function computeQueue(assignmentId: number, queueSource?: 'today' | 'backlog') {
   };
 }
 
-runMigrationsOnBoot();
+if (isEntry) {
+  runMigrationsOnBoot();
+}
 
-const app = Fastify({ logger: true });
+const app = Fastify({ logger: isEntry });
 
 await app.register(cors, {
   origin: true
@@ -519,8 +557,8 @@ app.get('/dictionary/search', async (request, reply) => {
 });
 
 app.get('/dictionary/entries/:id', async (request, reply) => {
-  const id = Number((request.params as { id: string }).id);
-  if (!Number.isInteger(id) || id <= 0) {
+  const id = parseAssignmentIdParam(request.params);
+  if (id === null) {
     return reply.status(400).send({ error: 'Invalid entry id' });
   }
 
@@ -653,11 +691,60 @@ app.post('/study-items/intake', async (request, reply) => {
     } | undefined;
 
     if (existingAssignment) {
-      // Assignment already exists, return 409 conflict
-      return reply.status(409).send({ 
-        error: 'Assignment already exists for this word and date',
-        assignment: existingAssignment
-      });
+      if (existingAssignment.status === 'archived') {
+        // Re-adding a previously-removed word: unarchive it instead of erroring.
+        sqlite
+          .prepare(
+            `
+            UPDATE daily_assignment
+            SET status = 'pending', completed_at = NULL, time_spent_ms = NULL
+            WHERE id = ?
+            `
+          )
+          .run(existingAssignment.id);
+
+        const assignment = sqlite
+          .prepare(
+            `
+            SELECT id, study_item_id, assigned_for_date, status, origin, created_at
+            FROM daily_assignment
+            WHERE id = ?
+            `
+          )
+          .get(existingAssignment.id) as {
+          id: number;
+          study_item_id: number;
+          assigned_for_date: string;
+          status: string;
+          origin: string;
+          created_at: string;
+        };
+
+        return {
+          status: 200,
+          body: {
+            study_item: {
+              id: studyItem.id,
+              surface_form: studyItem.surface_form,
+              selected_reading: studyItem.selected_reading,
+              dictionary_entry_id: studyItem.dictionary_entry_id,
+              source_type: studyItem.source_type,
+              created_at: studyItem.created_at,
+              is_new: isNew
+            },
+            assignment
+          }
+        };
+      }
+
+      // Assignment in a non-archived state already exists, return 409 conflict
+      return {
+        status: 409,
+        body: {
+          error: 'Assignment already exists for this word and date',
+          assignment: existingAssignment
+        }
+      };
     }
 
     const assignmentResult = sqlite
@@ -696,21 +783,24 @@ app.post('/study-items/intake', async (request, reply) => {
     };
 
     return {
-      study_item: {
-        id: studyItem.id,
-        surface_form: studyItem.surface_form,
-        selected_reading: studyItem.selected_reading,
-        dictionary_entry_id: studyItem.dictionary_entry_id,
-        source_type: studyItem.source_type,
-        created_at: studyItem.created_at,
-        is_new: isNew
-      },
-      assignment
+      status: 201,
+      body: {
+        study_item: {
+          id: studyItem.id,
+          surface_form: studyItem.surface_form,
+          selected_reading: studyItem.selected_reading,
+          dictionary_entry_id: studyItem.dictionary_entry_id,
+          source_type: studyItem.source_type,
+          created_at: studyItem.created_at,
+          is_new: isNew
+        },
+        assignment
+      }
     };
   });
 
   const result = transaction();
-  return reply.status(201).send(result);
+  return reply.status(result.status).send(result.body);
 });
 
 app.get('/assignments', async (request, reply) => {
@@ -757,8 +847,8 @@ app.get('/assignments/backlog', async () => {
 });
 
 app.get('/assignments/:id/drill', async (request, reply) => {
-  const id = Number((request.params as { id: string }).id);
-  if (!Number.isInteger(id) || id <= 0) {
+  const id = parseAssignmentIdParam(request.params);
+  if (id === null) {
     return reply.status(400).send({ error: 'Invalid assignment id' });
   }
 
@@ -799,6 +889,10 @@ app.get('/assignments/:id/drill', async (request, reply) => {
 
   if (!row) {
     return reply.status(404).send({ error: 'Assignment not found' });
+  }
+
+  if (row.status === 'archived') {
+    return reply.status(409).send({ error: 'Assignment is archived' });
   }
 
   const entry = getEntryDetails(row.dictionary_entry_id);
@@ -893,8 +987,8 @@ app.get('/assignments/:id/drill', async (request, reply) => {
 });
 
 app.get('/assignments/:id/view', async (request, reply) => {
-  const id = Number((request.params as { id: string }).id);
-  if (!Number.isInteger(id) || id <= 0) {
+  const id = parseAssignmentIdParam(request.params);
+  if (id === null) {
     return reply.status(400).send({ error: 'Invalid assignment id' });
   }
 
@@ -1013,14 +1107,18 @@ app.get('/assignments/:id/view', async (request, reply) => {
 });
 
 app.post('/assignments/:id/complete', async (request, reply) => {
-  const id = Number((request.params as { id: string }).id);
-  if (!Number.isInteger(id) || id <= 0) {
+  const id = parseAssignmentIdParam(request.params);
+  if (id === null) {
     return reply.status(400).send({ error: 'Invalid assignment id' });
   }
 
   const parsed = updateAssignmentTimeSchema.safeParse(request.body ?? {});
   if (!parsed.success) {
     return reply.status(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid request body' });
+  }
+
+  if (await rejectIfArchived(id, reply)) {
+    return;
   }
 
   const now = nowIso();
@@ -1041,22 +1139,23 @@ app.post('/assignments/:id/complete', async (request, reply) => {
     return reply.status(404).send({ error: 'Assignment not found' });
   }
 
-  const assignment = sqlite
-    .prepare(`SELECT id, status, time_spent_ms, completed_at FROM daily_assignment WHERE id = ?`)
-    .get(id) as { id: number; status: string; time_spent_ms: number | null; completed_at: string | null };
-
+  const assignment = fetchAssignmentSummary(id);
   return { assignment };
 });
 
 app.post('/assignments/:id/skip', async (request, reply) => {
-  const id = Number((request.params as { id: string }).id);
-  if (!Number.isInteger(id) || id <= 0) {
+  const id = parseAssignmentIdParam(request.params);
+  if (id === null) {
     return reply.status(400).send({ error: 'Invalid assignment id' });
   }
 
   const parsed = updateAssignmentTimeSchema.safeParse(request.body ?? {});
   if (!parsed.success) {
     return reply.status(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid request body' });
+  }
+
+  if (await rejectIfArchived(id, reply)) {
+    return;
   }
 
   const result = sqlite
@@ -1076,17 +1175,18 @@ app.post('/assignments/:id/skip', async (request, reply) => {
     return reply.status(404).send({ error: 'Assignment not found' });
   }
 
-  const assignment = sqlite
-    .prepare(`SELECT id, status, time_spent_ms, completed_at FROM daily_assignment WHERE id = ?`)
-    .get(id) as { id: number; status: string; time_spent_ms: number | null; completed_at: string | null };
-
+  const assignment = fetchAssignmentSummary(id);
   return { assignment };
 });
 
 app.post('/assignments/:id/reopen', async (request, reply) => {
-  const id = Number((request.params as { id: string }).id);
-  if (!Number.isInteger(id) || id <= 0) {
+  const id = parseAssignmentIdParam(request.params);
+  if (id === null) {
     return reply.status(400).send({ error: 'Invalid assignment id' });
+  }
+
+  if (await rejectIfArchived(id, reply)) {
+    return;
   }
 
   const result = sqlite
@@ -1103,10 +1203,68 @@ app.post('/assignments/:id/reopen', async (request, reply) => {
     return reply.status(404).send({ error: 'Assignment not found' });
   }
 
-  const assignment = sqlite
-    .prepare(`SELECT id, status, time_spent_ms, completed_at FROM daily_assignment WHERE id = ?`)
-    .get(id) as { id: number; status: string; time_spent_ms: number | null; completed_at: string | null };
+  const assignment = fetchAssignmentSummary(id);
+  return { assignment };
+});
 
+app.post('/assignments/:id/archive', async (request, reply) => {
+  const id = parseAssignmentIdParam(request.params);
+  if (id === null) {
+    return reply.status(400).send({ error: 'Invalid assignment id' });
+  }
+
+  const row = fetchAssignmentSummary(id);
+  if (!row) {
+    return reply.status(404).send({ error: 'Assignment not found' });
+  }
+
+  if (row.status === 'completed') {
+    return reply.status(409).send({ error: 'Completed assignments cannot be archived' });
+  }
+  if (row.status === 'archived') {
+    return reply.status(409).send({ error: 'Assignment is already archived' });
+  }
+
+  sqlite
+    .prepare(
+      `
+      UPDATE daily_assignment
+      SET status = 'archived', completed_at = NULL, time_spent_ms = NULL
+      WHERE id = ?
+      `
+    )
+    .run(id);
+
+  const assignment = fetchAssignmentSummary(id);
+  return { assignment };
+});
+
+app.post('/assignments/:id/unarchive', async (request, reply) => {
+  const id = parseAssignmentIdParam(request.params);
+  if (id === null) {
+    return reply.status(400).send({ error: 'Invalid assignment id' });
+  }
+
+  const row = fetchAssignmentSummary(id);
+  if (!row) {
+    return reply.status(404).send({ error: 'Assignment not found' });
+  }
+
+  if (row.status !== 'archived') {
+    return reply.status(409).send({ error: 'Only archived assignments can be unarchived' });
+  }
+
+  sqlite
+    .prepare(
+      `
+      UPDATE daily_assignment
+      SET status = 'pending', completed_at = NULL, time_spent_ms = NULL
+      WHERE id = ?
+      `
+    )
+    .run(id);
+
+  const assignment = fetchAssignmentSummary(id);
   return { assignment };
 });
 
@@ -1121,12 +1279,12 @@ app.get('/stats/dashboard', async (request) => {
       `
       SELECT
         COUNT(*) AS total,
-        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status IN ('pending', 'skipped') THEN 1 ELSE 0 END) AS pending,
         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
         SUM(COALESCE(time_spent_ms, 0)) AS total_time_ms,
         AVG(CASE WHEN status = 'completed' THEN time_spent_ms END) AS avg_time_per_assignment_ms
       FROM daily_assignment
-      WHERE assigned_for_date = ?
+      WHERE assigned_for_date = ? AND status != 'archived'
       `
     )
     .get(today) as {
@@ -1158,6 +1316,7 @@ app.get('/stats/dashboard', async (request) => {
         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS total_completed,
         AVG(CASE WHEN status = 'completed' THEN time_spent_ms END) AS avg_time_per_assignment_ms
       FROM daily_assignment
+      WHERE status != 'archived'
       `
     )
     .get() as {
@@ -1514,10 +1673,14 @@ process.on('SIGINT', () => {
   void shutdown('SIGINT');
 });
 
-try {
-  await app.listen({ port: appConfig.port, host: appConfig.host });
-  app.log.info(`API server listening on http://${appConfig.host}:${appConfig.port}`);
-} catch (error) {
-  requestLogSafe(error);
-  process.exit(1);
+if (isEntry) {
+  try {
+    await app.listen({ port: appConfig.port, host: appConfig.host });
+    app.log.info(`API server listening on http://${appConfig.host}:${appConfig.port}`);
+  } catch (error) {
+    requestLogSafe(error);
+    process.exit(1);
+  }
 }
+
+export { app };

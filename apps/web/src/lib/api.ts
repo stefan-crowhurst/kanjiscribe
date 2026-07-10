@@ -19,12 +19,12 @@ export function apiAssetUrl(path: string): string {
 
 export async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {};
-  
+
   // Only set Content-Type if there's a body to send
   if (options?.body) {
     headers['Content-Type'] = 'application/json';
   }
-  
+
   // Merge any additional headers from options
   if (options?.headers) {
     Object.entries(options.headers).forEach(([key, value]) => {
@@ -45,6 +45,12 @@ export async function apiRequest<T>(path: string, options?: RequestInit): Promis
   }
 
   return (await response.json()) as T;
+}
+
+export async function archiveAssignment(id: number): Promise<void> {
+  await apiRequest<{ assignment: { id: number; status: string } }>(`/assignments/${id}/archive`, {
+    method: 'POST'
+  });
 }
 
 export function formatMs(ms: number): string {
