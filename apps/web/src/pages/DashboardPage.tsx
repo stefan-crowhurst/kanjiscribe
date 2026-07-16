@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Heatmap } from '../components/Heatmap.js';
 import { ProgressCharts } from '../components/ProgressCharts.js';
 import { KanjiIcon } from '../components/KanjiIcon.js';
-import { apiRequest, formatMs, formatShortDate } from '../lib/api.js';
+import { apiRequest, formatMs, formatMsEstimate, formatShortDate } from '../lib/api.js';
 
 type DashboardResponse = {
   today: {
@@ -62,11 +62,16 @@ type TopKanjiResponse = {
   }>;
 };
 
+type TodayEstimateResponse = {
+  estimated_remaining_ms: number;
+};
+
 export function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [topWords, setTopWords] = useState<TopWordsResponse | null>(null);
   const [slowestWords, setSlowestWords] = useState<SlowestWordsResponse | null>(null);
   const [topKanji, setTopKanji] = useState<TopKanjiResponse | null>(null);
+  const [todayEstimate, setTodayEstimate] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [yearOffset, setYearOffset] = useState(0);
 
@@ -88,6 +93,12 @@ export function DashboardPage() {
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load dashboard'));
   }, [range.from, range.to]);
+
+  useEffect(() => {
+    apiRequest<TodayEstimateResponse>('/estimates/today')
+      .then((res) => setTodayEstimate(res.estimated_remaining_ms))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -137,6 +148,9 @@ export function DashboardPage() {
           <p>{data.today.total} assignments</p>
           <small>
             {data.today.completed} completed, {data.today.pending} remaining
+          </small>
+          <small>
+            Estimate: {todayEstimate === null ? '—' : formatMsEstimate(todayEstimate)}
           </small>
         </article>
         <article className="card stat-card">

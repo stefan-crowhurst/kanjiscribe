@@ -1373,6 +1373,43 @@ app.get('/stats/dashboard', async (request) => {
   };
 });
 
+app.get('/estimates/today', async () => {
+  const today = todayIsoDate();
+  const rows = sqlite
+    .prepare(
+      `
+      SELECT
+        da.status,
+        COALESCE(da.time_spent_ms, 0) AS time_spent_ms,
+        COALESCE(vsis.times_completed, 0) AS times_completed,
+        COALESCE(vsis.avg_completion_time_ms, 0) AS avg_completion_time_ms
+      FROM daily_assignment da
+      JOIN study_item si ON si.id = da.study_item_id
+      LEFT JOIN v_study_item_stats vsis ON vsis.study_item_id = da.study_item_id
+      WHERE da.assigned_for_date = ? AND da.status != 'archived'
+      `
+    )
+    .all(today) as Array<{
+    status: AssignmentStatus;
+    time_spent_ms: number;
+    times_completed: number;
+    avg_completion_time_ms: number;
+  }>;
+
+  let estimatedRemainingMs = 0;
+  for (const row of rows) {
+    if (row.status === 'completed') {
+      estimatedRemainingMs += row.time_spent_ms;
+    } else if (row.status === 'pending' || row.status === 'skipped') {
+      if (row.times_completed >= 1) {
+        estimatedRemainingMs += row.avg_completion_time_ms;
+      }
+    }
+  }
+
+  return { estimated_remaining_ms: estimatedRemainingMs };
+});
+
 app.get('/stats/study-items/:id', async (request, reply) => {
   const id = Number((request.params as { id: string }).id);
   if (!Number.isInteger(id) || id <= 0) {
