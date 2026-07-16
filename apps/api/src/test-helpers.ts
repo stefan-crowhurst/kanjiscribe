@@ -12,6 +12,7 @@ export type SeededAssignment = {
 function wipeAll(db: Database): void {
   db.exec('PRAGMA foreign_keys = OFF');
   for (const table of [
+    'kanji_attribution',
     'daily_assignment',
     'study_item',
     'study_item_kanji',
@@ -46,7 +47,23 @@ export function resetDb(): void {
 let nextStudyItemId = 1;
 let nextAssignmentId = 1;
 
-export function seedStudyItem(db: Database = sqlite, dictId: number = 1): number {
+export function seedKanji(
+  literal: string,
+  strokeCount: number,
+  db: Database = sqlite
+): void {
+  db.prepare(
+    `INSERT INTO kanji (literal, meanings_json, onyomi_json, kunyomi_json, stroke_count, grade, jlpt_level, frequency_rank)
+     VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)
+     ON CONFLICT(literal) DO UPDATE SET stroke_count = excluded.stroke_count`
+  ).run(literal, JSON.stringify([]), JSON.stringify([]), JSON.stringify([]), strokeCount);
+}
+
+export function seedStudyItem(
+  db: Database = sqlite,
+  dictId: number = 1,
+  overrides?: { surface_form?: string; selected_reading?: string }
+): number {
   const ts = '2024-01-01T00:00:00.000Z';
   db.prepare(
     `INSERT INTO dictionary_entry (id, is_common, priority_rank, created_at, updated_at) VALUES (?, 1, NULL, ?, ?)
@@ -54,11 +71,28 @@ export function seedStudyItem(db: Database = sqlite, dictId: number = 1): number
   ).run(dictId, ts, ts);
 
   const studyItemId = nextStudyItemId++;
+  const surfaceForm = overrides?.surface_form ?? `形${studyItemId}`;
+  const selectedReading = overrides?.selected_reading ?? `よみ${studyItemId}`;
   db.prepare(
     `INSERT INTO study_item (id, surface_form, selected_reading, dictionary_entry_id, source_type, created_at)
      VALUES (?, ?, ?, ?, 'manual', ?)`
-  ).run(studyItemId, `形${studyItemId}`, `よみ${studyItemId}`, dictId, ts);
+  ).run(studyItemId, surfaceForm, selectedReading, dictId, ts);
   return studyItemId;
+}
+
+export function seedStudyItemKanji(
+  studyItemId: number,
+  kanji: Array<{ position: number; literal: string }>,
+  db: Database = sqlite
+): void {
+  const insert = db.prepare(
+    `INSERT INTO study_item_kanji (study_item_id, position, kanji_literal)
+     VALUES (?, ?, ?)
+     ON CONFLICT(study_item_id, position) DO UPDATE SET kanji_literal = excluded.kanji_literal`
+  );
+  for (const { position, literal } of kanji) {
+    insert.run(studyItemId, position, literal);
+  }
 }
 
 export function seedAssignment(

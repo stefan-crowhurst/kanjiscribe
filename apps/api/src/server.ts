@@ -13,6 +13,10 @@ import {
 } from '@kanjiscribe/shared';
 import Fastify, { type FastifyReply } from 'fastify';
 
+import {
+  deleteKanjiAttributionForAssignment,
+  writeKanjiAttributionForAssignment
+} from './attribution.js';
 import { appConfig, nowIso, todayIsoDate } from './config.js';
 import { sqlite } from './db/client.js';
 
@@ -91,8 +95,8 @@ async function rejectIfArchived(id: number, reply: FastifyReply): Promise<boolea
 
 import { runMigrationsOnDb } from './db/run-migrations.js';
 
-function runMigrationsOnBoot(): void {
-  runMigrationsOnDb(sqlite);
+async function runMigrationsOnBoot(): Promise<void> {
+  await runMigrationsOnDb(sqlite);
 }
 
 function getEntryDetails(entryId: number) {
@@ -514,7 +518,7 @@ function computeQueue(assignmentId: number, queueSource?: 'today' | 'backlog') {
 }
 
 if (isEntry) {
-  runMigrationsOnBoot();
+  await runMigrationsOnBoot();
 }
 
 const app = Fastify({ logger: isEntry });
@@ -1121,23 +1125,54 @@ app.post('/assignments/:id/complete', async (request, reply) => {
     return;
   }
 
-  const now = nowIso();
-  const result = sqlite
+  const assignmentMeta = sqlite
     .prepare(
       `
-      UPDATE daily_assignment
-      SET
-        status = 'completed',
-        completed_at = ?,
-        time_spent_ms = COALESCE(?, time_spent_ms)
-      WHERE id = ?
+      SELECT
+        da.id,
+        da.study_item_id,
+        da.time_spent_ms
+      FROM daily_assignment da
+      WHERE da.id = ?
       `
     )
-    .run(now, parsed.data.time_spent_ms ?? null, id);
+    .get(id) as
+    | {
+        id: number;
+        study_item_id: number;
+        time_spent_ms: number | null;
+      }
+    | undefined;
 
-  if (result.changes === 0) {
+  if (!assignmentMeta) {
     return reply.status(404).send({ error: 'Assignment not found' });
   }
+
+  const now = nowIso();
+  const timeSpentMs = parsed.data.time_spent_ms ?? assignmentMeta.time_spent_ms;
+
+  const transaction = sqlite.transaction(() => {
+    sqlite
+      .prepare(
+        `
+        UPDATE daily_assignment
+        SET
+          status = 'completed',
+          completed_at = ?,
+          time_spent_ms = COALESCE(?, time_spent_ms)
+        WHERE id = ?
+        `
+      )
+      .run(now, parsed.data.time_spent_ms ?? null, id);
+
+    deleteKanjiAttributionForAssignment(sqlite, id);
+
+    if (typeof timeSpentMs === 'number') {
+      writeKanjiAttributionForAssignment(sqlite, id, assignmentMeta.study_item_id, timeSpentMs);
+    }
+  });
+
+  transaction();
 
   const assignment = fetchAssignmentSummary(id);
   return { assignment };
@@ -1189,15 +1224,23 @@ app.post('/assignments/:id/reopen', async (request, reply) => {
     return;
   }
 
-  const result = sqlite
-    .prepare(
-      `
-      UPDATE daily_assignment
-      SET status = 'pending', completed_at = NULL, time_spent_ms = NULL
-      WHERE id = ?
-      `
-    )
-    .run(id);
+  const transaction = sqlite.transaction(() => {
+    const updateResult = sqlite
+      .prepare(
+        `
+        UPDATE daily_assignment
+        SET status = 'pending', completed_at = NULL, time_spent_ms = NULL
+        WHERE id = ?
+        `
+      )
+      .run(id);
+
+    deleteKanjiAttributionForAssignment(sqlite, id);
+
+    return updateResult;
+  });
+
+  const result = transaction();
 
   if (result.changes === 0) {
     return reply.status(404).send({ error: 'Assignment not found' });
