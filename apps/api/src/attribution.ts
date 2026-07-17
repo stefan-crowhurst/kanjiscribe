@@ -12,7 +12,7 @@ export type KanjiAttributionRow = {
   attributed_time_ms: number;
 };
 
-type StudyItemKanji = {
+export type StudyItemKanji = {
   position: number;
   literal: string;
   stroke_count: number;
