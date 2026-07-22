@@ -34,7 +34,6 @@ export async function runMigrationsOnDb(db: Database, log = false): Promise<void
     }
 
     if (log) {
-      // eslint-disable-next-line no-console
       console.log(`Applied migration ${file}`);
     }
   }

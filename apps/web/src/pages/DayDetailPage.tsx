@@ -82,11 +82,6 @@ export function DayDetailPage() {
     [completedAssignments]
   );
 
-  const pendingIds = useMemo(() => 
-    pendingAssignments.map((a) => a.id),
-    [pendingAssignments]
-  );
-
   const remainingAssignments = useMemo(
     () => [...pendingAssignments, ...skippedAssignments],
     [pendingAssignments, skippedAssignments]

@@ -7,6 +7,7 @@ import Database from 'better-sqlite3';
 import { XMLParser } from 'fast-xml-parser';
 import sax from 'sax';
 import unzipper from 'unzipper';
+import { z } from 'zod';
 
 type ImportDataset = 'jmdict' | 'kanjidic2' | 'kanjivg';
 
@@ -82,6 +83,47 @@ function asArray<T>(value: T | T[] | undefined): T[] {
   return Array.isArray(value) ? value : [value];
 }
 
+const KanjiReadingSchema = z.union([
+  z.string(),
+  z.object({
+    '#text': z.string(),
+    '@_r_type': z.string().optional()
+  })
+]);
+
+const KanjiMeaningSchema = z.union([
+  z.string(),
+  z.object({
+    '#text': z.string(),
+    '@_m_lang': z.string().optional()
+  })
+]);
+
+const KanjiMiscSchema = z.object({
+  stroke_count: z.coerce.number().optional(),
+  grade: z.coerce.number().optional(),
+  jlpt: z.coerce.number().optional(),
+  freq: z.coerce.number().optional()
+});
+
+const KanjiRmGroupSchema = z.object({
+  // fast-xml-parser collapses a single child element into a scalar and only
+  // produces an array when the same tag appears more than once; `asArray`
+  // normalises both shapes at the call site.
+  reading: z.union([z.array(KanjiReadingSchema), KanjiReadingSchema]).optional(),
+  meaning: z.union([z.array(KanjiMeaningSchema), KanjiMeaningSchema]).optional()
+});
+
+const KanjiCharacterSchema = z.object({
+  literal: z.string().optional(),
+  misc: KanjiMiscSchema.optional(),
+  reading_meaning: z
+    .object({
+      rmgroup: z.union([z.array(KanjiRmGroupSchema), KanjiRmGroupSchema]).optional()
+    })
+    .optional()
+});
+
 function extractNfRank(tags: string[]): number | null {
   let min: number | null = null;
   for (const tag of tags) {
@@ -122,7 +164,7 @@ function createProgressReporter(label: string): ProgressReporter {
       return;
     }
 
-    const frame = spinnerFrames[frameIndex % spinnerFrames.length];
+    const frame = spinnerFrames[frameIndex % spinnerFrames.length] ?? '|';
     frameIndex += 1;
     process.stdout.write(`\r${buildLine(frame)}`);
   };
@@ -195,7 +237,7 @@ function importKanjidic2(sourceFile: string): void {
       kanjidic2?: { character?: unknown };
     };
 
-    const characters = asArray(parsed.kanjidic2?.character as any);
+    const characters = asArray(parsed.kanjidic2?.character);
     const insert = db.prepare(
       `
       INSERT INTO kanji (
@@ -213,9 +255,10 @@ function importKanjidic2(sourceFile: string): void {
       `
     );
 
-    const tx = db.transaction((chunk: any[]) => {
-      for (const character of chunk) {
+    const tx = db.transaction((chunk: unknown[]) => {
+      for (const raw of chunk) {
         try {
+          const character = KanjiCharacterSchema.parse(raw);
           const literal = String(character.literal ?? '').trim();
           if (!literal) {
             failed += 1;
@@ -223,18 +266,18 @@ function importKanjidic2(sourceFile: string): void {
           }
 
           const misc = character.misc ?? {};
-          const strokeRaw = asArray(misc.stroke_count)[0];
+          const strokeCount = misc.stroke_count ?? 0;
 
-          const groups = asArray(character.reading_meaning?.rmgroup as any);
+          const groups = asArray(character.reading_meaning?.rmgroup);
           const onyomi: string[] = [];
           const kunyomi: string[] = [];
           const meanings: string[] = [];
 
           for (const group of groups) {
-            const readings = asArray(group.reading as any);
-            for (const reading of readings) {
-              const text = typeof reading === 'string' ? reading : String(reading['#text'] ?? '').trim();
-              const type = typeof reading === 'string' ? '' : String(reading['@_r_type'] ?? '');
+            for (const reading of asArray(group.reading)) {
+              const text =
+                typeof reading === 'string' ? reading : String(reading['#text'] ?? '').trim();
+              const type = typeof reading === 'string' ? '' : reading['@_r_type'] ?? '';
               if (!text) {
                 continue;
               }
@@ -246,12 +289,11 @@ function importKanjidic2(sourceFile: string): void {
               }
             }
 
-            const meaningList = asArray(group.meaning as any);
-            for (const meaning of meaningList) {
+            for (const meaning of asArray(group.meaning)) {
               if (typeof meaning === 'string') {
                 meanings.push(meaning);
               } else {
-                const lang = String(meaning['@_m_lang'] ?? 'en');
+                const lang = meaning['@_m_lang'] ?? 'en';
                 if (lang === 'en') {
                   meanings.push(String(meaning['#text'] ?? '').trim());
                 }
@@ -264,10 +306,10 @@ function importKanjidic2(sourceFile: string): void {
             JSON.stringify(meanings.filter(Boolean)),
             JSON.stringify(onyomi.filter(Boolean)),
             JSON.stringify(kunyomi.filter(Boolean)),
-            Number(strokeRaw ?? 0),
-            misc.grade ? Number(misc.grade) : null,
-            misc.jlpt ? Number(misc.jlpt) : null,
-            misc.freq ? Number(misc.freq) : null
+            strokeCount,
+            misc.grade ? misc.grade : null,
+            misc.jlpt ? misc.jlpt : null,
+            misc.freq ? misc.freq : null
           );
 
           processed += 1;
