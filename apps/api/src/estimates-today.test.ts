@@ -188,8 +188,9 @@ describe('GET /estimates/today', () => {
 
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body) as { estimated_remaining_ms: number };
-    // 10 kanji writes at (500 ms/stroke * 3 strokes) + 2 reading-writing kana writes.
-    expect(body.estimated_remaining_ms).toBe(17000);
+    // Level-4 floor: 10 kanji writes at (600 ms/stroke * 3 strokes) + 2 reading-writing
+    // kana writes + 10s per-card padding (no completions anywhere).
+    expect(body.estimated_remaining_ms).toBe(30000);
   });
 
   it('uses Level-1 per-write times for remainder-cell tie-breaking in multi-kanji words', async () => {
@@ -304,7 +305,8 @@ describe('GET /estimates/today', () => {
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body) as { estimated_remaining_ms: number };
     // 5 kana -> 3 cells -> N=3, remainder=1 cell -> 17 surface kana writes + 5 reading-writing.
-    expect(body.estimated_remaining_ms).toBe(22000);
+    // Plus 10s per-card padding because there are zero completions anywhere.
+    expect(body.estimated_remaining_ms).toBe(32000);
   });
 
   it('sums fallback estimates for multiple never-drilled pending words', async () => {
@@ -328,9 +330,9 @@ describe('GET /estimates/today', () => {
 
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body) as { estimated_remaining_ms: number };
-    // Level-4 floor for 山: 10 * (500 * 3) + 2 * 1000 = 17000.
-    // Kana-only: 22 * 1000 = 22000.
-    expect(body.estimated_remaining_ms).toBe(39000);
+    // Level-4 floor for 山: 10 * (600 * 3) + 2 * 1000 + 10s pad = 30000.
+    // Kana-only: 22 * 1000 + 10s pad = 32000.
+    expect(body.estimated_remaining_ms).toBe(62000);
   });
 
   it('adds actual time_spent_ms for completed assignments on today', async () => {

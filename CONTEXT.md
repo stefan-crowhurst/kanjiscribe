@@ -33,7 +33,7 @@ The derived time to write a single kanji once, observed indirectly from word-lev
 _Avoid_: per-char time, stroke time
 
 **Per-stroke coefficient**:
-A single milliseconds-per-stroke number used to estimate an undrilled kanji's write time. Two sources: a constant **floor** (0.5 s/stroke, in code) used only when no completed assignment exists anywhere; and the **global per-stroke average** (total attributed kanji time ÷ total attributed strokes across all completions), which replaces the floor as soon as the first completion lands. Same shape — both are ms/stroke — so the floor is simply the prior before data.
+A single milliseconds-per-stroke number used to estimate an undrilled kanji's write time. Two sources: a constant **floor** (0.6 s/stroke, in code) used only when no completed assignment exists anywhere; and the **global per-stroke average** (total attributed kanji time ÷ total attributed strokes across all completions), which replaces the floor as soon as the first completion lands. Same shape — both are ms/stroke — so the floor is simply the prior before data. When the floor is in effect, a fixed per-card padding (10 s) is added to account for card-dwell overhead that no completion data has yet captured.
 _Avoid_: stroke rate, stroke factor
 
 **Kana unit**:

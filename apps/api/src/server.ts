@@ -6,6 +6,7 @@ import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import {
   assignmentsQuerySchema,
+  dateSchema,
   dictionarySearchQuerySchema,
   intakeRequestSchema,
   queueSourceSchema,
@@ -1417,6 +1418,14 @@ app.get('/stats/dashboard', async (request) => {
   };
 });
 
+function estimateAssignmentsByIds(ids: number[]): number {
+  let estimatedRemainingMs = 0;
+  for (const id of ids) {
+    estimatedRemainingMs += estimateAssignment(sqlite, id);
+  }
+  return estimatedRemainingMs;
+}
+
 app.get('/estimates/today', async () => {
   const today = todayIsoDate();
   const rows = sqlite
@@ -1429,12 +1438,41 @@ app.get('/estimates/today', async () => {
     )
     .all(today) as Array<{ id: number }>;
 
-  let estimatedRemainingMs = 0;
-  for (const row of rows) {
-    estimatedRemainingMs += estimateAssignment(sqlite, row.id);
+  return { estimated_remaining_ms: estimateAssignmentsByIds(rows.map((row) => row.id)) };
+});
+
+app.get('/estimates/backlog-days', async () => {
+  const today = todayIsoDate();
+  const rows = sqlite
+    .prepare(
+      `
+      SELECT da.id
+      FROM daily_assignment da
+      WHERE da.assigned_for_date < ? AND da.status IN ('pending', 'skipped')
+      `
+    )
+    .all(today) as Array<{ id: number }>;
+
+  return { estimated_remaining_ms: estimateAssignmentsByIds(rows.map((row) => row.id)) };
+});
+
+app.get('/estimates/backlog-day', async (request, reply) => {
+  const parsed = dateSchema.safeParse((request.query as { date?: string }).date);
+  if (!parsed.success) {
+    return reply.status(400).send({ error: 'Invalid date' });
   }
 
-  return { estimated_remaining_ms: estimatedRemainingMs };
+  const rows = sqlite
+    .prepare(
+      `
+      SELECT da.id
+      FROM daily_assignment da
+      WHERE da.assigned_for_date = ? AND da.status IN ('pending', 'skipped')
+      `
+    )
+    .all(parsed.data) as Array<{ id: number }>;
+
+  return { estimated_remaining_ms: estimateAssignmentsByIds(rows.map((row) => row.id)) };
 });
 
 app.get('/stats/study-items/:id', async (request, reply) => {

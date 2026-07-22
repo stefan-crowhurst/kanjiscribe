@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { Heatmap } from '../components/Heatmap.js';
 import { ProgressCharts } from '../components/ProgressCharts.js';
 import { KanjiIcon } from '../components/KanjiIcon.js';
+import { useEstimate } from '../hooks/useEstimate.js';
 import { apiRequest, formatMs, formatMsEstimate, formatShortDate } from '../lib/api.js';
 
 type DashboardResponse = {
@@ -62,18 +63,15 @@ type TopKanjiResponse = {
   }>;
 };
 
-type TodayEstimateResponse = {
-  estimated_remaining_ms: number;
-};
-
 export function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [topWords, setTopWords] = useState<TopWordsResponse | null>(null);
   const [slowestWords, setSlowestWords] = useState<SlowestWordsResponse | null>(null);
   const [topKanji, setTopKanji] = useState<TopKanjiResponse | null>(null);
-  const [todayEstimate, setTodayEstimate] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [yearOffset, setYearOffset] = useState(0);
+  const todayEstimate = useEstimate('/estimates/today');
+  const backlogEstimate = useEstimate('/estimates/backlog-days');
 
   const range = useMemo(() => {
     const toDate = new Date();
@@ -93,12 +91,6 @@ export function DashboardPage() {
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load dashboard'));
   }, [range.from, range.to]);
-
-  useEffect(() => {
-    apiRequest<TodayEstimateResponse>('/estimates/today')
-      .then((res) => setTodayEstimate(res.estimated_remaining_ms))
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -157,6 +149,7 @@ export function DashboardPage() {
           <h2>Overdue</h2>
           <p>{data.overdue.total_pending} open</p>
           <small>Oldest: {data.overdue.oldest_date ? formatShortDate(data.overdue.oldest_date) : 'none'}</small>
+          <small>Estimate: {backlogEstimate === null ? '—' : formatMsEstimate(backlogEstimate)}</small>
         </article>
         <article className="card stat-card">
           <h2>Today Time</h2>

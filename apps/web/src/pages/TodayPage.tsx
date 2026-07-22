@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 
 import { AssignmentList } from '../components/AssignmentList.js';
 import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
-import { apiRequest, todayDateString } from '../lib/api.js';
+import { useEstimate } from '../hooks/useEstimate.js';
+import { apiRequest, formatMsEstimate, todayDateString } from '../lib/api.js';
 
 type Assignment = {
   id: number;
@@ -32,6 +33,7 @@ export function TodayPage() {
   const [assignments, setAssignments] = useState<Assignment[] | null>(null);
   const [dayStats, setDayStats] = useState<DayStats | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const todayEstimate = useEstimate('/estimates/today');
 
   const refresh = useCallback(async () => {
     const today = todayDateString();
@@ -73,6 +75,9 @@ export function TodayPage() {
           <h2>Today</h2>
           <p className="muted">
             {completed}/{total} drilled, {remaining} remaining
+          </p>
+          <p className="muted">
+            Estimate: {todayEstimate === null ? '—' : formatMsEstimate(todayEstimate)}
           </p>
         </div>
         {firstUnfinishedId ? (

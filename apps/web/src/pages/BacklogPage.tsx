@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 
 import { AssignmentList } from '../components/AssignmentList.js';
 import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
-import { apiRequest, formatShortDate } from '../lib/api.js';
+import { useBacklogDayEstimates } from '../hooks/useEstimate.js';
+import { apiRequest, formatMsEstimate, formatShortDate } from '../lib/api.js';
 
 type Assignment = {
   id: number;
@@ -30,6 +31,12 @@ export function BacklogPage() {
   useEffect(() => {
     refresh().catch((err) => setError(err instanceof Error ? err.message : 'Failed to load backlog'));
   }, [refresh]);
+
+  const dates = useMemo(
+    () => [...new Set(data?.assignments.map((a) => a.assigned_for_date) ?? [])],
+    [data?.assignments]
+  );
+  const dayEstimates = useBacklogDayEstimates(dates);
 
   const handleRemove = useArchiveRemoval(refresh, setError);
 
@@ -103,6 +110,9 @@ export function BacklogPage() {
                     <h3>{formatShortDate(group.date)}</h3>
                     <span className="backlog-day-stats">
                       {completed}/{total} drilled, {remaining} remaining
+                      {dayEstimates[group.date] === undefined
+                        ? ' —'
+                        : ` • ${formatMsEstimate(dayEstimates[group.date]!)}`}
                     </span>
                   </button>
                   <Link className="button button-today" to={`/drill/${group.assignments[0]!.id}${query}`}>

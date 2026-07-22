@@ -5,9 +5,16 @@ import { fetchStudyItemKanji, KANA_MS_PER_WRITE, type StudyItemKanji } from './a
 
 /**
  * Floor per-stroke handwriting time used when no kanji have been drilled
- * anywhere (Level-4 estimate). Fixed at 0.5 s/stroke per ADR-0005.
+ * anywhere (Level-4 estimate). Fixed at 0.6 s/stroke per ADR-0005.
  */
-export const FLOOR_MS_PER_STROKE = 500;
+export const FLOOR_MS_PER_STROKE = 600;
+
+/**
+ * Fixed per-card overhead applied only when the Level-4 floor is in effect.
+ * Accounts for the time spent reading the gloss, checking stroke order, and
+ * confirming the reading before/while writing a never-drilled word.
+ */
+const PER_WORD_PAD_MS = 10_000;
 
 type AssignmentEstimateRow = {
   status: 'pending' | 'completed' | 'skipped' | 'archived';
@@ -105,7 +112,7 @@ function estimateNeverDrilledWord(
   // Resolve the per-write time for every kanji via the full fallback chain
   // first, so the cell model can use the best-known times for remainder-cell
   // tie-breaking as well as for the final estimate.
-  const resolved = resolveKanjiPerWriteTimes(db, kanji);
+  const { resolved, usesFloor } = resolveKanjiPerWriteTimes(db, kanji);
 
   const perWriteTimes: PerWriteTime[] = resolved.map((k) => ({
     position: k.position,
@@ -128,10 +135,21 @@ function estimateNeverDrilledWord(
     kanjiEstimateMs += k.per_write_time_ms * writesCount;
   }
 
-  return kanjiEstimateMs + cellResult.kana_writes_total * KANA_MS_PER_WRITE;
+  const baseEstimate = kanjiEstimateMs + cellResult.kana_writes_total * KANA_MS_PER_WRITE;
+
+  // When no completions exist anywhere, the pure per-stroke floor has no
+  // real data to capture card-dwell overhead (reading the gloss, checking
+  // stroke order, confirming the reading). Add a fixed pad in that case only;
+  // Levels 1-3 already inherit such overhead from the attribution data.
+  return usesFloor ? baseEstimate + PER_WORD_PAD_MS : baseEstimate;
 }
 
-function resolveKanjiPerWriteTimes(db: Database, kanji: StudyItemKanji[]): ResolvedKanji[] {
+type ResolveResult = {
+  resolved: ResolvedKanji[];
+  usesFloor: boolean;
+};
+
+function resolveKanjiPerWriteTimes(db: Database, kanji: StudyItemKanji[]): ResolveResult {
   const kanjiTimingRows = db
     .prepare(`SELECT kanji_literal, mean_per_write_time_ms FROM v_kanji_timing`)
     .all() as KanjiTimingRow[];
@@ -150,27 +168,30 @@ function resolveKanjiPerWriteTimes(db: Database, kanji: StudyItemKanji[]): Resol
   );
   const globalSlope = globalSlopeRow?.ms_per_stroke ?? null;
 
-  return kanji.map((k) => {
-    let perWriteTimeMs: number;
-    if (kanjiTiming.has(k.literal)) {
-      // Level 1: per-kanji mean per-write time.
-      perWriteTimeMs = kanjiTiming.get(k.literal)!;
-    } else if (strokeBucket.has(k.stroke_count)) {
-      // Level 2: same-stroke-count bucket mean per-write time.
-      perWriteTimeMs = strokeBucket.get(k.stroke_count)!;
-    } else if (globalSlope !== null) {
-      // Level 3: global per-stroke ratio applied to this kanji's stroke count.
-      perWriteTimeMs = globalSlope * k.stroke_count;
-    } else {
-      // Level 4 (floor): fixed per-stroke constant.
-      perWriteTimeMs = FLOOR_MS_PER_STROKE * k.stroke_count;
-    }
+  return {
+    resolved: kanji.map((k) => {
+      let perWriteTimeMs: number;
+      if (kanjiTiming.has(k.literal)) {
+        // Level 1: per-kanji mean per-write time.
+        perWriteTimeMs = kanjiTiming.get(k.literal)!;
+      } else if (strokeBucket.has(k.stroke_count)) {
+        // Level 2: same-stroke-count bucket mean per-write time.
+        perWriteTimeMs = strokeBucket.get(k.stroke_count)!;
+      } else if (globalSlope !== null) {
+        // Level 3: global per-stroke ratio applied to this kanji's stroke count.
+        perWriteTimeMs = globalSlope * k.stroke_count;
+      } else {
+        // Level 4 (floor): fixed per-stroke constant.
+        perWriteTimeMs = FLOOR_MS_PER_STROKE * k.stroke_count;
+      }
 
-    return {
-      position: k.position,
-      literal: k.literal,
-      stroke_count: k.stroke_count,
-      per_write_time_ms: perWriteTimeMs
-    };
-  });
+      return {
+        position: k.position,
+        literal: k.literal,
+        stroke_count: k.stroke_count,
+        per_write_time_ms: perWriteTimeMs
+      };
+    }),
+    usesFloor: globalSlope === null
+  };
 }
