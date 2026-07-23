@@ -16,8 +16,20 @@ _Avoid_: deleted, removed (use "Removed" only for the user-facing action verb)
 The user-facing action of taking an assignment out of its day's queue. Internally transitions the assignment to `archived`. Only applies to assignments that are `pending` or `skipped` — the day's unfinished work.
 _Avoid_: Delete, discard (physical deletion is never performed on study data)
 
+**Estimate snapshot**:
+The estimate for a single assignment, computed once at assignment creation and persisted on the assignment (`estimated_ms`). It is the single source of "the estimate": forward views sum snapshots rather than recomputing, and post-completion performance is judged against the same number. Snapshots do not drift as attribution data accumulates, and no status transition (reopen, unarchive) recomputes them. Assignments created before snapshots existed carry `NULL` and show no performance data.
+_Avoid_: live estimate, cached estimate
+
+**Estimate delta**:
+The performance of a `completed` assignment against its **estimate snapshot**: `time_spent_ms − estimated_ms`. Positive is **over estimate** (slower than estimated — up arrow, red); negative is **under estimate** (faster — down arrow, green). Only completed assignments with a non-NULL snapshot are judgeable; skipped assignments (even with `time_spent_ms`) and archived assignments never show a delta.
+_Avoid_: variance, pace
+
+**Day estimate delta**:
+The day-level aggregate: Σ(time_spent_ms − estimated_ms) over a day's completed, snapshotted assignments. Displayed only when the day is strictly fully completed (`is_fully_completed`: no pending, no skipped, at least one completed) **and** every completed assignment has a snapshot — the verdict is final and complete, or not shown at all. Applies uniformly to every day-level surface (dashboard Today Time card, Today page, day detail header, heatmap cell outline and tooltip). Per-word deltas are final as soon as the word completes and are not gated.
+_Avoid_: day pace, day score
+
 **Time-to-finish estimate**:
-The predicted drilling time remaining for a set of assignments: actual recorded `time_spent_ms` for completed items, plus a forward estimate for each pending/skipped item. A fully completed day contributes zero. The unit is milliseconds (displayed as a human duration).
+The predicted drilling time remaining for a set of assignments: actual recorded `time_spent_ms` for completed items, plus the **estimate snapshot** of each pending/skipped item. A fully completed day contributes zero. The unit is milliseconds (displayed as a human duration).
 _Avoid_: predicted time, budget (use "budget" only for a full-day total that ignores actuals)
 
 **Writing cell model**:
