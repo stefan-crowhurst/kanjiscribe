@@ -1486,3 +1486,44 @@ small {
     box-shadow: 0 0 0 4px rgba(125, 47, 47, 0.15);
   }
 }
+
+/* Estimate delta chip (see CONTEXT.md: estimate delta) — shared indicator
+   used by day detail, Today Time card, Today page, and heatmap tooltip. */
+.delta-chip {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.delta-chip--over {
+  color: var(--accent);
+}
+
+.delta-chip--under {
+  color: var(--ok);
+}
+
+.delta-chip--neutral {
+  color: var(--muted);
+}
+
+.today-day-verdict {
+  margin: 0.25rem 0 0.75rem;
+  color: var(--ink);
+}
+
+/* Heatmap performance layer (issue 04-heatmap-performance-layer):
+   red/green outline for gated day estimate deltas on top of the existing
+   tone-* fill encoding. */
+.heatmap-cell.delta-over,
+.heatmap-cell.delta-over:hover,
+.heatmap-cell.delta-over:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.heatmap-cell.delta-under,
+.heatmap-cell.delta-under:hover,
+.heatmap-cell.delta-under:focus-visible {
+  outline: 2px solid var(--ok);
+  outline-offset: 1px;
+}

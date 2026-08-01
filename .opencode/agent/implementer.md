@@ -1,7 +1,9 @@
 ---
-description: Implements a .scratch issue end-to-end (code + tests) for HARD slices — schema migrations, SQL/query logic, gating rules, backend-heavy work. Runs on GLM-5.2 (opencode-go).
+description: Implements a .scratch issue end-to-end (code + tests) for HARD slices — schema migrations, SQL/query logic, gating rules, backend-heavy work. Runs on GPT-5.6 Luna (opencode-go).
 mode: subagent
-model: opencode-go/glm-5.2
+model: opencode-go/gpt-5.6-luna
+options:
+  reasoningEffort: high
 permission:
   bash:
     "*": "allow"

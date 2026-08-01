@@ -400,6 +400,7 @@ function listAssignments(params: { status?: string; date?: string; backlogOnly?:
         da.status,
         da.origin,
         da.time_spent_ms,
+        da.estimated_ms,
         da.created_at,
         da.completed_at,
         si.surface_form,
@@ -424,6 +425,7 @@ function listAssignments(params: { status?: string; date?: string; backlogOnly?:
     status: string;
     origin: string;
     time_spent_ms: number | null;
+    estimated_ms: number | null;
     created_at: string;
     completed_at: string | null;
     surface_form: string;
@@ -438,6 +440,7 @@ function listAssignments(params: { status?: string; date?: string; backlogOnly?:
     status: row.status,
     origin: row.origin,
     time_spent_ms: row.time_spent_ms,
+    estimated_ms: row.estimated_ms,
     created_at: row.created_at,
     completed_at: row.completed_at,
     study_item: {
@@ -698,6 +701,9 @@ app.post('/study-items/intake', async (request, reply) => {
     if (existingAssignment) {
       if (existingAssignment.status === 'archived') {
         // Re-adding a previously-removed word: unarchive it instead of erroring.
+        // The estimate snapshot is NOT (re)written here — the row keeps
+        // whatever `estimated_ms` it already has (NULL for pre-feature rows),
+        // per the estimate-snapshot contract in CONTEXT.md.
         sqlite
           .prepare(
             `
@@ -769,6 +775,18 @@ app.post('/study-items/intake', async (request, reply) => {
       .run(studyItem.id, assignedForDate, origin, now);
 
     const assignmentId = Number(assignmentResult.lastInsertRowid);
+
+    // Write the estimate snapshot: compute the estimate with the existing
+    // estimateAssignment against the freshly-inserted (pending) row and
+    // persist it as integer ms. For a pending row this yields the Level-0
+    // avg_completion_time_ms for previously-drilled items or the 4-level
+    // fallback-chain value for never-drilled items. Done inside the same
+    // transaction so the snapshot is atomic with assignment creation. The
+    // snapshot is never recomputed by any later status transition.
+    const estimatedMs = Math.round(estimateAssignment(sqlite, assignmentId));
+    sqlite
+      .prepare(`UPDATE daily_assignment SET estimated_ms = ? WHERE id = ?`)
+      .run(estimatedMs, assignmentId);
 
     const assignment = sqlite
       .prepare(
@@ -1369,20 +1387,51 @@ app.get('/stats/dashboard', async (request) => {
     avg_time_per_assignment_ms: number | null;
   };
 
+  // Day estimate delta gate (see CONTEXT.md: day estimate delta).
+  //
+  // The day verdict is present only when the day is strictly fully completed
+  // (`v_day_summary.is_fully_completed`: no pending, no skipped, at least one
+  // completed) AND every completed assignment of the day carries a non-null
+  // estimate snapshot (full coverage). The value is the signed sum over the
+  // day's completed snapshotted rows of `time_spent_ms − estimated_ms`.
+  //
+  // `NULL` for any gate failure: pending remaining, skipped present, mixed
+  // legacy/snapshot coverage, all-legacy day, empty day. Completed
+  // assignments are never archived (the state machine forbids the
+  // completed → archived transition), so the per-date aggregation below over
+  // `status = 'completed'` rows aligns exactly with the v_day_summary set.
   const heatmap = sqlite
     .prepare(
       `
+      WITH day_completed AS (
+        SELECT
+          assigned_for_date,
+          SUM(time_spent_ms - estimated_ms) AS delta_ms,
+          SUM(CASE WHEN estimated_ms IS NULL THEN 1 ELSE 0 END) AS null_count,
+          COUNT(*) AS completed_count
+        FROM daily_assignment
+        WHERE status = 'completed'
+        GROUP BY assigned_for_date
+      )
       SELECT
-        assigned_for_date AS date,
-        total_assignments,
-        completed_count,
-        pending_count,
-        skipped_count,
-        total_time_ms,
-        is_fully_completed
-      FROM v_day_summary
-      WHERE assigned_for_date BETWEEN ? AND ?
-      ORDER BY assigned_for_date ASC
+        vds.assigned_for_date AS date,
+        vds.total_assignments,
+        vds.completed_count,
+        vds.pending_count,
+        vds.skipped_count,
+        vds.total_time_ms,
+        vds.is_fully_completed,
+        CASE
+          WHEN vds.is_fully_completed = 1
+           AND dc.completed_count > 0
+           AND dc.null_count = 0
+          THEN dc.delta_ms
+          ELSE NULL
+        END AS estimate_delta_ms
+      FROM v_day_summary vds
+      LEFT JOIN day_completed dc ON dc.assigned_for_date = vds.assigned_for_date
+      WHERE vds.assigned_for_date BETWEEN ? AND ?
+      ORDER BY vds.assigned_for_date ASC
       `
     )
     .all(fromDate, to) as Array<{
@@ -1393,6 +1442,7 @@ app.get('/stats/dashboard', async (request) => {
     skipped_count: number;
     total_time_ms: number;
     is_fully_completed: number;
+    estimate_delta_ms: number | null;
   }>;
 
   return {
@@ -1413,46 +1463,69 @@ app.get('/stats/dashboard', async (request) => {
       total_completed: totalRow.total_completed ?? 0,
       avg_time_per_assignment_ms: Math.round(totalRow.avg_time_per_assignment_ms ?? 0)
     },
-    heatmap: heatmap.map((day) => ({ ...day, is_fully_completed: Boolean(day.is_fully_completed) }))
+    heatmap: heatmap.map((day) => ({
+      ...day,
+      is_fully_completed: Boolean(day.is_fully_completed)
+    }))
   };
 });
 
-function estimateAssignmentsByIds(ids: number[]): number {
-  let estimatedRemainingMs = 0;
-  for (const id of ids) {
-    estimatedRemainingMs += estimateAssignment(sqlite, id);
-  }
-  return estimatedRemainingMs;
-}
-
 app.get('/estimates/today', async () => {
   const today = todayIsoDate();
+  // Time-to-finish estimate for today: actual recorded time of completed
+  // assignments plus the estimate of each pending/skipped assignment.
+  // Archived assignments are excluded. Rows carrying an estimate snapshot
+  // (`estimated_ms`) use it; legacy rows (NULL snapshot — created before
+  // snapshots existed, e.g. every previously-missed day) fall back to a live
+  // estimateAssignment so they don't report 0:00.
   const rows = sqlite
     .prepare(
       `
-      SELECT da.id
-      FROM daily_assignment da
-      WHERE da.assigned_for_date = ? AND da.status != 'archived'
+      SELECT id, status, time_spent_ms, estimated_ms
+      FROM daily_assignment
+      WHERE assigned_for_date = ? AND status != 'archived'
       `
     )
-    .all(today) as Array<{ id: number }>;
+    .all(today) as Array<{
+    id: number;
+    status: string;
+    time_spent_ms: number | null;
+    estimated_ms: number | null;
+  }>;
 
-  return { estimated_remaining_ms: estimateAssignmentsByIds(rows.map((row) => row.id)) };
+  let estimatedRemainingMs = 0;
+  for (const row of rows) {
+    if (row.status === 'completed') {
+      estimatedRemainingMs += row.time_spent_ms ?? 0;
+    } else {
+      estimatedRemainingMs += row.estimated_ms ?? estimateAssignment(sqlite, row.id);
+    }
+  }
+
+  return { estimated_remaining_ms: estimatedRemainingMs };
 });
 
 app.get('/estimates/backlog-days', async () => {
   const today = todayIsoDate();
+  // Sum of estimates over strictly-past pending/skipped assignments, using
+  // the snapshot where present and a live estimateAssignment for legacy
+  // NULL-snapshot rows.
   const rows = sqlite
     .prepare(
       `
-      SELECT da.id
-      FROM daily_assignment da
-      WHERE da.assigned_for_date < ? AND da.status IN ('pending', 'skipped')
+      SELECT id, estimated_ms
+      FROM daily_assignment
+      WHERE assigned_for_date < ? AND status IN ('pending', 'skipped')
       `
     )
-    .all(today) as Array<{ id: number }>;
+    .all(today) as Array<{ id: number; estimated_ms: number | null }>;
 
-  return { estimated_remaining_ms: estimateAssignmentsByIds(rows.map((row) => row.id)) };
+  let estimatedRemainingMs = 0;
+  for (const row of rows) {
+    estimatedRemainingMs += row.estimated_ms ?? estimateAssignment(sqlite, row.id);
+  }
+
+  return { estimated_remaining_ms: estimatedRemainingMs };
 });
 
 app.get('/estimates/backlog-day', async (request, reply) => {
@@ -1461,17 +1534,25 @@ app.get('/estimates/backlog-day', async (request, reply) => {
     return reply.status(400).send({ error: 'Invalid date' });
   }
 
+  // Sum of estimates over the requested date's pending/skipped rows, using
+  // the snapshot where present and a live estimateAssignment for legacy
+  // NULL-snapshot rows.
   const rows = sqlite
     .prepare(
       `
-      SELECT da.id
-      FROM daily_assignment da
-      WHERE da.assigned_for_date = ? AND da.status IN ('pending', 'skipped')
+      SELECT id, estimated_ms
+      FROM daily_assignment
+      WHERE assigned_for_date = ? AND status IN ('pending', 'skipped')
       `
     )
-    .all(parsed.data) as Array<{ id: number }>;
+    .all(parsed.data) as Array<{ id: number; estimated_ms: number | null }>;
 
-  return { estimated_remaining_ms: estimateAssignmentsByIds(rows.map((row) => row.id)) };
+  let estimatedRemainingMs = 0;
+  for (const row of rows) {
+    estimatedRemainingMs += row.estimated_ms ?? estimateAssignment(sqlite, row.id);
+  }
+
+  return { estimated_remaining_ms: estimatedRemainingMs };
 });
 
 app.get('/stats/study-items/:id', async (request, reply) => {

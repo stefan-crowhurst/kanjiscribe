@@ -1,7 +1,7 @@
 ---
-description: Implements a .scratch issue end-to-end (code + tests) for EASY, mechanical slices — frontend rendering, CSS, display formatting, simple wiring. Runs on Kimi K2.7-Code (opencode-go).
+description: Implements a .scratch issue end-to-end (code + tests) for EASY, mechanical slices — frontend rendering, CSS, display formatting, simple wiring. Runs on DeepSeek V4 Flash (opencode-go).
 mode: subagent
-model: opencode-go/kimi-k2.7-code
+model: opencode-go/deepseek-v4-flash
 permission:
   bash:
     "*": "allow"
