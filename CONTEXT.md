@@ -28,6 +28,10 @@ _Avoid_: variance, pace
 The day-level aggregate: Σ(time_spent_ms − estimated_ms) over a day's completed, snapshotted assignments. Displayed only when the day is strictly fully completed (`is_fully_completed`: no pending, no skipped, at least one completed) **and** every completed assignment has a snapshot — the verdict is final and complete, or not shown at all. Applies uniformly to every day-level surface (dashboard Today Time card, Today page, day detail header, heatmap cell outline and tooltip). Per-word deltas are final as soon as the word completes and are not gated.
 _Avoid_: day pace, day score
 
+**Day estimate**:
+The planned drilling time for a single day: the sum of `estimated_ms` over the day's non-archived assignments (completed, pending, skipped). It is the target the **day estimate delta** is measured against — over a strictly fully completed, fully-snapshotted day, `day estimate delta = total_time_ms − day estimate`. Legacy assignments (NULL snapshot) contribute zero, so a day estimate is only trustworthy when snapshot coverage over the day is complete.
+_Avoid_: budget (informal alias only — "budget" is rejected for the time-to-finish estimate), scheduled total, plan
+
 **Time-to-finish estimate**:
 The predicted drilling time remaining for a set of assignments: actual recorded `time_spent_ms` for completed items, plus the **estimate snapshot** of each pending/skipped item. A fully completed day contributes zero. The unit is milliseconds (displayed as a human duration).
 _Avoid_: predicted time, budget (use "budget" only for a full-day total that ignores actuals)

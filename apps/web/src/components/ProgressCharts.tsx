@@ -20,6 +20,7 @@ type ChartDay = {
   skipped_count: number;
   total_time_ms: number;
   is_fully_completed: boolean;
+  estimated_total_ms: number | null;
 };
 
 type DashboardResponse = {
@@ -40,8 +41,10 @@ type TimeInterval = 7 | 14 | 30;
 type TimeChartData = {
   shortDate: string;
   fullDate: string;
-  totalTimeMin: number;
+  totalTimeSec: number;
   totalTimeMs: number;
+  estimateSec: number | null;
+  estimateMs: number | null;
 };
 
 type WordsChartData = {
@@ -61,11 +64,20 @@ function formatShortDay(dateStr: string): string {
   return dateStr.slice(8, 10) + '/' + dateStr.slice(5, 7);
 }
 
-function formatYAxisMinutes(value: number): string {
-  if (value === Math.floor(value)) {
-    return `${value}min`;
+function formatYAxisSeconds(value: number): string {
+  if (value !== Math.floor(value)) {
+    return '';
   }
-  return '';
+  if (value === 0) {
+    return '0s';
+  }
+  if (value < 60) {
+    return `${value}s`;
+  }
+  if (value % 60 === 0) {
+    return `${value / 60}m`;
+  }
+  return `${Math.floor(value / 60)}m${value % 60}s`;
 }
 
 function formatYAxisAvg(value: number): string {
@@ -81,10 +93,25 @@ function formatYAxisAvg(value: number): string {
 function TimeTooltipContent({ active, payload }: { active?: boolean; payload?: Array<{ payload: TimeChartData }> }) {
   if (!active || !payload?.length) return null;
   const d = payload[0]!.payload;
+  const estimateLine =
+    d.estimateMs === null
+      ? null
+      : `Day estimate: ${formatMs(d.estimateMs)}`;
+  const deltaMs = d.estimateMs === null ? null : d.totalTimeMs - d.estimateMs;
+  const deltaLine =
+    deltaMs === null
+      ? null
+      : deltaMs === 0
+        ? 'on estimate'
+        : deltaMs > 0
+          ? `${formatMs(deltaMs)} over estimate`
+          : `${formatMs(-deltaMs)} under estimate`;
   return (
     <div className="chart-tooltip">
       <p className="chart-tooltip-date">{d.fullDate}</p>
       <p>Total time: {formatMs(d.totalTimeMs)}</p>
+      {estimateLine && <p>{estimateLine}</p>}
+      {deltaLine && <p>{deltaLine}</p>}
     </div>
   );
 }
@@ -147,8 +174,11 @@ export function ProgressCharts() {
     return activeDays.map((day) => ({
       shortDate: formatShortDay(day.date),
       fullDate: formatShortDate(day.date),
-      totalTimeMin: Math.round(day.total_time_ms / 60000),
-      totalTimeMs: day.total_time_ms
+      totalTimeSec: day.total_time_ms / 1000,
+      totalTimeMs: day.total_time_ms,
+      estimateSec:
+        day.estimated_total_ms === null ? null : day.estimated_total_ms / 1000,
+      estimateMs: day.estimated_total_ms
     }));
   }, [activeDays]);
 
@@ -181,9 +211,11 @@ export function ProgressCharts() {
   const goBack = () => setPageOffset((v) => v + 1);
   const goForward = () => setPageOffset((v) => Math.max(0, v - 1));
 
-  const maxTimeMin = useMemo(() => {
-    if (!timeChartData.length) return 5;
-    const max = Math.max(...timeChartData.map((d) => d.totalTimeMin));
+  const maxTimeSec = useMemo(() => {
+    if (!timeChartData.length) return 30;
+    const max = Math.max(
+      ...timeChartData.map((d) => Math.max(d.totalTimeSec, d.estimateSec ?? 0))
+    );
     return Math.max(max, 1);
   }, [timeChartData]);
 
@@ -200,13 +232,13 @@ export function ProgressCharts() {
   }, [avgChartData]);
 
   const timeTicks = useMemo(() => {
-    const step = maxTimeMin <= 5 ? 0.5 : 1;
+    const step = maxTimeSec <= 60 ? 15 : maxTimeSec <= 300 ? 30 : maxTimeSec <= 900 ? 60 : 300;
     const ticks: number[] = [];
-    for (let v = 0; v <= maxTimeMin + step; v += step) {
-      ticks.push(Math.round(v * 10) / 10);
+    for (let v = 0; v <= maxTimeSec + step; v += step) {
+      ticks.push(Math.round(v));
     }
     return ticks;
-  }, [maxTimeMin]);
+  }, [maxTimeSec]);
 
   const wordsTicks = useMemo(() => {
     const ticks: number[] = [];
@@ -271,10 +303,20 @@ export function ProgressCharts() {
             <ComposedChart data={timeChartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e4d4c2" />
               <XAxis dataKey="shortDate" tick={{ fontSize: 11, fill: '#766958' }} />
-              <YAxis width={36} ticks={timeTicks} tickFormatter={formatYAxisMinutes} tick={{ fontSize: 11, fill: '#766958' }} />
+              <YAxis width={36} ticks={timeTicks} tickFormatter={formatYAxisSeconds} tick={{ fontSize: 11, fill: '#766958' }} />
               <Tooltip content={<TimeTooltipContent />} />
-              <Bar dataKey="totalTimeMin" fill="#d7b9a1" radius={[2, 2, 0, 0]} />
-              <Line type="monotone" dataKey="totalTimeMin" stroke="#9b2f2f" strokeWidth={2} dot={false} />
+              <Bar dataKey="totalTimeSec" fill="#d7b9a1" radius={[2, 2, 0, 0]} isAnimationActive={false} />
+              <Line type="monotone" dataKey="totalTimeSec" stroke="#9b2f2f" strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line
+                type="monotone"
+                dataKey="estimateSec"
+                stroke="#766958"
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                dot={false}
+                connectNulls={false}
+                isAnimationActive={false}
+              />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -287,8 +329,8 @@ export function ProgressCharts() {
               <XAxis dataKey="shortDate" tick={{ fontSize: 11, fill: '#766958' }} />
               <YAxis width={36} ticks={wordsTicks} allowDecimals={false} tick={{ fontSize: 11, fill: '#766958' }} />
               <Tooltip content={<WordsTooltipContent />} />
-              <Bar dataKey="wordsCompleted" fill="#3b7f5f" fillOpacity={0.35} radius={[2, 2, 0, 0]} />
-              <Line type="monotone" dataKey="wordsCompleted" stroke="#3b7f5f" strokeWidth={2} dot={false} />
+              <Bar dataKey="wordsCompleted" fill="#3b7f5f" fillOpacity={0.35} radius={[2, 2, 0, 0]} isAnimationActive={false} />
+              <Line type="monotone" dataKey="wordsCompleted" stroke="#3b7f5f" strokeWidth={2} dot={false} isAnimationActive={false} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -301,8 +343,8 @@ export function ProgressCharts() {
               <XAxis dataKey="shortDate" tick={{ fontSize: 11, fill: '#766958' }} />
               <YAxis width={36} ticks={avgTicks} tickFormatter={formatYAxisAvg} tick={{ fontSize: 11, fill: '#766958' }} />
               <Tooltip content={<AvgTooltipContent />} />
-              <Bar dataKey="avgTimeMin" fill="#b06f2c" fillOpacity={0.35} radius={[2, 2, 0, 0]} />
-              <Line type="monotone" dataKey="avgTimeMin" stroke="#b06f2c" strokeWidth={2} dot={false} />
+              <Bar dataKey="avgTimeMin" fill="#b06f2c" fillOpacity={0.35} radius={[2, 2, 0, 0]} isAnimationActive={false} />
+              <Line type="monotone" dataKey="avgTimeMin" stroke="#b06f2c" strokeWidth={2} dot={false} isAnimationActive={false} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>

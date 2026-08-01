@@ -1407,6 +1407,7 @@ app.get('/stats/dashboard', async (request) => {
         SELECT
           assigned_for_date,
           SUM(time_spent_ms - estimated_ms) AS delta_ms,
+          SUM(estimated_ms) AS estimated_total_ms,
           SUM(CASE WHEN estimated_ms IS NULL THEN 1 ELSE 0 END) AS null_count,
           COUNT(*) AS completed_count
         FROM daily_assignment
@@ -1427,7 +1428,14 @@ app.get('/stats/dashboard', async (request) => {
            AND dc.null_count = 0
           THEN dc.delta_ms
           ELSE NULL
-        END AS estimate_delta_ms
+        END AS estimate_delta_ms,
+        CASE
+          WHEN vds.is_fully_completed = 1
+           AND dc.completed_count > 0
+           AND dc.null_count = 0
+          THEN dc.estimated_total_ms
+          ELSE NULL
+        END AS estimated_total_ms
       FROM v_day_summary vds
       LEFT JOIN day_completed dc ON dc.assigned_for_date = vds.assigned_for_date
       WHERE vds.assigned_for_date BETWEEN ? AND ?
@@ -1443,7 +1451,8 @@ app.get('/stats/dashboard', async (request) => {
     total_time_ms: number;
     is_fully_completed: number;
     estimate_delta_ms: number | null;
-  }>;
+      estimated_total_ms: number | null;
+    }>;
 
   return {
     today: {
