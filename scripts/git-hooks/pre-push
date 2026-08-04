@@ -17,8 +17,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     BASE="$remote_sha"
   fi
 
-  if git diff --name-only "$BASE..$local_sha" -- .scratch/ | grep -q .; then
-    printf 'push rejected: commits %s..%s touch files under .scratch/\n' "$BASE" "$local_sha" >&2
+  if git diff --name-status "$BASE..$local_sha" -- .scratch/ | grep -E '^[^D]' | grep -q .; then
+    printf 'push rejected: commits %s..%s add or modify files under .scratch/\n' "$BASE" "$local_sha" >&2
     printf 'the pre-commit hook unstages .scratch/ files; do not add them (override with --no-verify only if intended)\n' >&2
     exit 1
   fi
