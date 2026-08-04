@@ -144,8 +144,8 @@ describe('GET /stats/dashboard estimated_total_ms day estimate gate', () => {
     });
   });
 
-  describe('gate failures all yield null', () => {
-    it('pending remaining → null', async () => {
+  describe('full snapshot coverage over the non-archived set', () => {
+    it('in-progress day with pending remaining still exposes the day estimate', async () => {
       const a = seedStudyItem();
       const b = seedStudyItem();
       seedAssignment({
@@ -164,10 +164,12 @@ describe('GET /stats/dashboard estimated_total_ms day estimate gate', () => {
 
       const row = await dashboardOn('2024-07-01');
       expect(row!.is_fully_completed).toBe(false);
-      expect(row!.estimated_total_ms).toBeNull();
+      // The estimate covers the whole non-archived set; the verdict stays null.
+      expect(row!.estimated_total_ms).toBe(14000);
+      expect(row!.estimate_delta_ms).toBeNull();
     });
 
-    it('skipped present → null', async () => {
+    it('skipped present with a snapshot still exposes the day estimate', async () => {
       const a = seedStudyItem();
       const b = seedStudyItem();
       seedAssignment({
@@ -187,9 +189,27 @@ describe('GET /stats/dashboard estimated_total_ms day estimate gate', () => {
 
       const row = await dashboardOn('2024-07-02');
       expect(row!.is_fully_completed).toBe(false);
-      expect(row!.estimated_total_ms).toBeNull();
+      expect(row!.estimated_total_ms).toBe(14000);
+      expect(row!.estimate_delta_ms).toBeNull();
     });
 
+    it('fully-pending fully-snapshotted day exposes its planned total', async () => {
+      const a = seedStudyItem();
+      seedAssignment({
+        study_item_id: a,
+        assigned_for_date: '2024-07-06',
+        status: 'pending',
+        estimated_ms: 25000
+      });
+
+      const row = await dashboardOn('2024-07-06');
+      expect(row!.is_fully_completed).toBe(false);
+      expect(row!.estimated_total_ms).toBe(25000);
+      expect(row!.estimate_delta_ms).toBeNull();
+    });
+  });
+
+  describe('partial snapshot coverage (legacy rows) yields null', () => {
     it('mixed legacy/snapshot coverage → null', async () => {
       const a = seedStudyItem();
       const b = seedStudyItem();
@@ -233,6 +253,28 @@ describe('GET /stats/dashboard estimated_total_ms day estimate gate', () => {
 
       const row = await dashboardOn('2024-07-04');
       expect(row!.is_fully_completed).toBe(true);
+      expect(row!.estimated_total_ms).toBeNull();
+    });
+
+    it('legacy pending row makes an otherwise snapshotted day partial → null', async () => {
+      const a = seedStudyItem();
+      const b = seedStudyItem();
+      seedAssignment({
+        study_item_id: a,
+        assigned_for_date: '2024-07-07',
+        status: 'completed',
+        time_spent_ms: 10000,
+        estimated_ms: 9000
+      });
+      seedAssignment({
+        study_item_id: b,
+        assigned_for_date: '2024-07-07',
+        status: 'pending',
+        estimated_ms: null
+      });
+
+      const row = await dashboardOn('2024-07-07');
+      expect(row!.is_fully_completed).toBe(false);
       expect(row!.estimated_total_ms).toBeNull();
     });
 

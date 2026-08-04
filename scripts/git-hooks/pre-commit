@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -u
+
+ROOT="$(git rev-parse --show-toplevel)" || exit 1
+cd "$ROOT" || exit 1
+
+STAGED="$(git diff --cached --name-only -- .scratch/)"
+if [ -z "$STAGED" ]; then
+  exit 0
+fi
+
+git reset -q -- .scratch/
+
+COUNT="$(printf '%s\n' "$STAGED" | wc -l)"
+printf 'warning: unstaged %s file(s) under .scratch/ to keep them out of this commit\n' "$COUNT" >&2
+printf '%s\n' "$STAGED" | sed 's/^/  /' >&2
+exit 0

@@ -60,19 +60,6 @@ function getTone(day: HeatmapDay | undefined, maxCompleted: number): string {
   return `done-${Math.min(level, 4)}`;
 }
 
-function getDeltaClass(day: HeatmapDay | undefined): string {
-  if (day?.estimate_delta_ms == null) {
-    return '';
-  }
-  if (day.estimate_delta_ms > 0) {
-    return 'delta-over';
-  }
-  if (day.estimate_delta_ms < 0) {
-    return 'delta-under';
-  }
-  return '';
-}
-
 export function Heatmap({ days, from, to }: { days: HeatmapDay[]; from: string; to: string }) {
   const [hoverDate, setHoverDate] = useState<string | null>(null);
   const [pinnedDate, setPinnedDate] = useState<string | null>(null);
@@ -283,14 +270,13 @@ export function Heatmap({ days, from, to }: { days: HeatmapDay[]; from: string; 
                 const dateString = formatDate(date);
                 const day = byDate.get(dateString);
                 const tone = getTone(day, maxCompleted);
-                const deltaClass = getDeltaClass(day);
                 const isActive = activeDate === dateString;
 
                 return (
                   <button
                     key={dateString}
                     type="button"
-                    className={`heatmap-cell tone-${tone} ${deltaClass}${isActive ? ' active' : ''}`}
+                    className={`heatmap-cell tone-${tone}${isActive ? ' active' : ''}`}
                     style={{
                       gridColumnStart: Math.floor(index / 7) + 1,
                       gridRowStart: ((date.getUTCDay() + 6) % 7) + 1

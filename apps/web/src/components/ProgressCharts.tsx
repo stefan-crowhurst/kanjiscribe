@@ -4,6 +4,7 @@ import {
   CartesianGrid,
   ComposedChart,
   Line,
+  Rectangle,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -45,6 +46,7 @@ type TimeChartData = {
   totalTimeMs: number;
   estimateSec: number | null;
   estimateMs: number | null;
+  isFullyCompleted: boolean;
 };
 
 type WordsChartData = {
@@ -97,7 +99,7 @@ function TimeTooltipContent({ active, payload }: { active?: boolean; payload?: A
     d.estimateMs === null
       ? null
       : `Day estimate: ${formatMs(d.estimateMs)}`;
-  const deltaMs = d.estimateMs === null ? null : d.totalTimeMs - d.estimateMs;
+  const deltaMs = d.estimateMs === null || !d.isFullyCompleted ? null : d.totalTimeMs - d.estimateMs;
   const deltaLine =
     deltaMs === null
       ? null
@@ -124,6 +126,50 @@ function WordsTooltipContent({ active, payload }: { active?: boolean; payload?: 
       <p className="chart-tooltip-date">{d.fullDate}</p>
       <p>{d.wordsCompleted} {d.wordsCompleted === 1 ? 'word' : 'words'} completed</p>
     </div>
+  );
+}
+
+type EstimateBarShapeProps = {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  fill?: string;
+  radius?: number | [number, number, number, number];
+  payload?: TimeChartData;
+  background?: { x: number; y: number; width: number; height: number };
+  maxSec?: number;
+};
+
+function EstimateBarShape({ x, y, width, height, fill, radius, payload, background, maxSec }: EstimateBarShapeProps) {
+  const estimateSec = payload?.estimateSec ?? null;
+  let estimateLine = null;
+  if (
+    estimateSec !== null &&
+    maxSec !== undefined &&
+    maxSec > 0 &&
+    background !== undefined &&
+    x !== undefined &&
+    width !== undefined
+  ) {
+    const estimateY = background.y + ((maxSec - estimateSec) / maxSec) * background.height;
+    estimateLine = (
+      <line
+        x1={x}
+        y1={estimateY}
+        x2={x + width}
+        y2={estimateY}
+        stroke="#766958"
+        strokeWidth={2}
+        strokeDasharray="5 5"
+      />
+    );
+  }
+  return (
+    <g>
+      <Rectangle x={x} y={y} width={width} height={height} fill={fill} radius={radius} />
+      {estimateLine}
+    </g>
   );
 }
 
@@ -169,18 +215,26 @@ export function ProgressCharts() {
     return data.heatmap.filter((day) => day.total_time_ms > 0 || day.completed_count > 0);
   }, [data]);
 
+  const timeActiveDays = useMemo(() => {
+    if (!data) return [];
+    return data.heatmap.filter(
+      (day) => day.total_time_ms > 0 || day.completed_count > 0 || day.estimated_total_ms != null
+    );
+  }, [data]);
+
   const timeChartData: TimeChartData[] = useMemo(() => {
-    if (!activeDays.length) return [];
-    return activeDays.map((day) => ({
+    if (!timeActiveDays.length) return [];
+    return timeActiveDays.map((day) => ({
       shortDate: formatShortDay(day.date),
       fullDate: formatShortDate(day.date),
       totalTimeSec: day.total_time_ms / 1000,
       totalTimeMs: day.total_time_ms,
       estimateSec:
         day.estimated_total_ms === null ? null : day.estimated_total_ms / 1000,
-      estimateMs: day.estimated_total_ms
+      estimateMs: day.estimated_total_ms,
+      isFullyCompleted: day.is_fully_completed
     }));
-  }, [activeDays]);
+  }, [timeActiveDays]);
 
   const wordsChartData: WordsChartData[] = useMemo(() => {
     if (!activeDays.length) return [];
@@ -231,14 +285,23 @@ export function ProgressCharts() {
     return Math.max(max, 0.5);
   }, [avgChartData]);
 
+  const timeStep = useMemo(
+    () => (maxTimeSec <= 60 ? 15 : maxTimeSec <= 300 ? 30 : maxTimeSec <= 900 ? 60 : 300),
+    [maxTimeSec]
+  );
+
+  const timeDomainMax = useMemo(
+    () => Math.max(1, Math.ceil(maxTimeSec / timeStep) * timeStep),
+    [maxTimeSec, timeStep]
+  );
+
   const timeTicks = useMemo(() => {
-    const step = maxTimeSec <= 60 ? 15 : maxTimeSec <= 300 ? 30 : maxTimeSec <= 900 ? 60 : 300;
     const ticks: number[] = [];
-    for (let v = 0; v <= maxTimeSec + step; v += step) {
+    for (let v = 0; v <= timeDomainMax; v += timeStep) {
       ticks.push(Math.round(v));
     }
     return ticks;
-  }, [maxTimeSec]);
+  }, [timeDomainMax, timeStep]);
 
   const wordsTicks = useMemo(() => {
     const ticks: number[] = [];
@@ -303,20 +366,18 @@ export function ProgressCharts() {
             <ComposedChart data={timeChartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e4d4c2" />
               <XAxis dataKey="shortDate" tick={{ fontSize: 11, fill: '#766958' }} />
-              <YAxis width={36} ticks={timeTicks} tickFormatter={formatYAxisSeconds} tick={{ fontSize: 11, fill: '#766958' }} />
+              <YAxis width={36} ticks={timeTicks} domain={[0, timeDomainMax]} tickFormatter={formatYAxisSeconds} tick={{ fontSize: 11, fill: '#766958' }} />
               <Tooltip content={<TimeTooltipContent />} />
-              <Bar dataKey="totalTimeSec" fill="#d7b9a1" radius={[2, 2, 0, 0]} isAnimationActive={false} />
-              <Line type="monotone" dataKey="totalTimeSec" stroke="#9b2f2f" strokeWidth={2} dot={false} isAnimationActive={false} />
-              <Line
-                type="monotone"
-                dataKey="estimateSec"
-                stroke="#766958"
-                strokeWidth={2}
-                strokeDasharray="5 5"
-                dot={false}
-                connectNulls={false}
+              <Bar
+                dataKey="totalTimeSec"
+                fill="#d7b9a1"
+                radius={[2, 2, 0, 0]}
                 isAnimationActive={false}
+                shape={(barProps: unknown) => (
+                  <EstimateBarShape {...(barProps as EstimateBarShapeProps)} maxSec={timeDomainMax} />
+                )}
               />
+              <Line type="monotone" dataKey="totalTimeSec" stroke="#9b2f2f" strokeWidth={2} dot={false} isAnimationActive={false} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>

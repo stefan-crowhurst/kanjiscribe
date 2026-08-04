@@ -1510,20 +1510,3 @@ small {
   margin: 0.25rem 0 0.75rem;
   color: var(--ink);
 }
-
-/* Heatmap performance layer (issue 04-heatmap-performance-layer):
-   red/green outline for gated day estimate deltas on top of the existing
-   tone-* fill encoding. */
-.heatmap-cell.delta-over,
-.heatmap-cell.delta-over:hover,
-.heatmap-cell.delta-over:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.heatmap-cell.delta-under,
-.heatmap-cell.delta-under:hover,
-.heatmap-cell.delta-under:focus-visible {
-  outline: 2px solid var(--ok);
-  outline-offset: 1px;
-}
