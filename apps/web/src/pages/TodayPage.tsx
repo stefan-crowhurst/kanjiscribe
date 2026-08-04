@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { AssignmentList } from '../components/AssignmentList.js';
+import { DeltaChip } from '../components/DeltaChip.js';
 import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
-import { apiRequest, todayDateString } from '../lib/api.js';
+import { useEstimate } from '../hooks/useEstimate.js';
+import { apiRequest, formatMsEstimate, todayDateString } from '../lib/api.js';
 
 type Assignment = {
   id: number;
@@ -26,12 +28,15 @@ type DaySummaryResponse = {
   skipped_count: number;
   total_time_ms: number;
   is_fully_completed: boolean;
+  estimate_delta_ms: number | null;
 };
 
 export function TodayPage() {
   const [assignments, setAssignments] = useState<Assignment[] | null>(null);
   const [dayStats, setDayStats] = useState<DayStats | null>(null);
+  const [dayDeltaMs, setDayDeltaMs] = useState<number | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  const todayEstimate = useEstimate('/estimates/today');
 
   const refresh = useCallback(async () => {
     const today = todayDateString();
@@ -50,6 +55,11 @@ export function TodayPage() {
           }
         : null
     );
+    // Server-gated day verdict: null when today is unfinished; numeric once
+    // today is strictly fully completed with full snapshot coverage. Kept
+    // distinct from the not-yet-loaded state so the verdict renders only
+    // once the server has actually returned a value.
+    setDayDeltaMs(todayStats ? todayStats.estimate_delta_ms : null);
   }, []);
 
   useEffect(() => {
@@ -74,6 +84,9 @@ export function TodayPage() {
           <p className="muted">
             {completed}/{total} drilled, {remaining} remaining
           </p>
+          <p className="muted">
+            Estimate: {todayEstimate === null ? '—' : formatMsEstimate(todayEstimate)}
+          </p>
         </div>
         {firstUnfinishedId ? (
           <Link className="button button-today" to={`/drill/${firstUnfinishedId}?queue_source=today`}>
@@ -81,6 +94,11 @@ export function TodayPage() {
           </Link>
         ) : null}
       </div>
+      {typeof dayDeltaMs === 'number' ? (
+        <p className="today-day-verdict">
+          Day verdict: <DeltaChip deltaMs={dayDeltaMs} />
+        </p>
+      ) : null}
       {error ? <p className="error">{error}</p> : null}
       <AssignmentList
         assignments={assignments ?? []}

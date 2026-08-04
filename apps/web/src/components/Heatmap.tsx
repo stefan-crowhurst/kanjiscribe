@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { DeltaChip } from './DeltaChip.js';
 
 type HeatmapDay = {
   date: string;
@@ -9,6 +10,7 @@ type HeatmapDay = {
   skipped_count: number;
   total_time_ms: number;
   is_fully_completed: boolean;
+  estimate_delta_ms: number | null;
 };
 
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -153,7 +155,7 @@ export function Heatmap({ days, from, to }: { days: HeatmapDay[]; from: string; 
       return {
         title: 'No drills completed',
         subtitle: activeDateLabel,
-        detail: null as string | null
+        detail: null
       };
     }
 
@@ -162,7 +164,14 @@ export function Heatmap({ days, from, to }: { days: HeatmapDay[]; from: string; 
       return {
         title: `${activeDay.completed_count} ${noun}`,
         subtitle: activeDateLabel,
-        detail: `in ${formatDuration(activeDay.total_time_ms)}`
+        detail:
+          activeDay.estimate_delta_ms != null ? (
+            <>
+              in {formatDuration(activeDay.total_time_ms)} · <DeltaChip deltaMs={activeDay.estimate_delta_ms} />
+            </>
+          ) : (
+            `in ${formatDuration(activeDay.total_time_ms)}`
+          )
       };
     }
 
@@ -267,7 +276,7 @@ export function Heatmap({ days, from, to }: { days: HeatmapDay[]; from: string; 
                   <button
                     key={dateString}
                     type="button"
-                    className={`heatmap-cell tone-${tone} ${isActive ? 'active' : ''}`}
+                    className={`heatmap-cell tone-${tone}${isActive ? ' active' : ''}`}
                     style={{
                       gridColumnStart: Math.floor(index / 7) + 1,
                       gridRowStart: ((date.getUTCDay() + 6) % 7) + 1
@@ -307,7 +316,11 @@ export function Heatmap({ days, from, to }: { days: HeatmapDay[]; from: string; 
                         setTooltipFromCell(event.currentTarget);
                       }
                     }}
-                    aria-label={`${dateString}: ${day?.completed_count ?? 0} completed, ${(day?.pending_count ?? 0) + (day?.skipped_count ?? 0)} remaining`}
+                    aria-label={`${dateString}: ${day?.completed_count ?? 0} completed, ${(day?.pending_count ?? 0) + (day?.skipped_count ?? 0)} remaining${
+                      day?.estimate_delta_ms != null
+                        ? `, ${day.estimate_delta_ms > 0 ? 'over estimate' : day.estimate_delta_ms < 0 ? 'under estimate' : 'on estimate'}`
+                        : ''
+                    }`}
                   />
                 );
               })}

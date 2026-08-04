@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -u
+
+ZERO="0000000000000000000000000000000000000000"
+
+ROOT="$(git rev-parse --show-toplevel)" || exit 1
+cd "$ROOT" || exit 1
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -n "$local_sha" ] || continue
+  [ "$local_sha" = "$remote_sha" ] && continue
+  [ "$local_sha" = "$ZERO" ] && continue
+
+  if [ "$remote_sha" = "$ZERO" ]; then
+    BASE="$(git rev-parse "$local_sha^" 2>/dev/null || printf '%s' "$local_sha")"
+  else
+    BASE="$remote_sha"
+  fi
+
+  if git diff --name-status "$BASE..$local_sha" -- .scratch/ | grep -E '^[^D]' | grep -q .; then
+    printf 'push rejected: commits %s..%s add or modify files under .scratch/\n' "$BASE" "$local_sha" >&2
+    printf 'the pre-commit hook unstages .scratch/ files; do not add them (override with --no-verify only if intended)\n' >&2
+    exit 1
+  fi
+done
+
+exit 0

@@ -8,14 +8,15 @@
     "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint src --ext .ts"
+    "lint": "eslint src"
   },
   "dependencies": {
     "@kanjiscribe/shared": "workspace:*",
     "better-sqlite3": "^11.8.1",
     "fast-xml-parser": "^5.1.0",
     "sax": "^1.4.1",
-    "unzipper": "^0.12.3"
+    "unzipper": "^0.12.3",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",

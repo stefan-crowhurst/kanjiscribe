@@ -53,12 +53,19 @@ export async function archiveAssignment(id: number): Promise<void> {
   });
 }
 
-export function formatMs(ms: number): string {
-  const minutes = Math.floor(ms / 60000);
-  const seconds = Math.floor((ms % 60000) / 1000)
-    .toString()
-    .padStart(2, '0');
+function formatMsWithRounding(ms: number, roundSeconds: (seconds: number) => number): string {
+  const totalSeconds = roundSeconds(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = (totalSeconds % 60).toString().padStart(2, '0');
   return `${minutes}:${seconds}`;
+}
+
+export function formatMs(ms: number): string {
+  return formatMsWithRounding(ms, Math.floor);
+}
+
+export function formatMsEstimate(ms: number): string {
+  return formatMsWithRounding(ms, Math.ceil);
 }
 
 export function todayDateString(): string {

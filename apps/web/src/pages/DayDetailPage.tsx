@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
+import { DeltaChip } from '../components/DeltaChip.js';
 import { RemoveButton } from '../components/RemoveButton.js';
 import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
 import { apiRequest, formatMs } from '../lib/api.js';
@@ -10,6 +11,7 @@ type Assignment = {
   assigned_for_date: string;
   status: string;
   time_spent_ms: number | null;
+  estimated_ms: number | null;
   study_item: { 
     surface_form: string; 
     selected_reading: string; 
@@ -24,6 +26,7 @@ type DaySummary = {
   pending_count: number;
   skipped_count: number;
   total_time_ms: number;
+  estimate_delta_ms: number | null;
   is_fully_completed: boolean;
 };
 
@@ -82,11 +85,6 @@ export function DayDetailPage() {
     [completedAssignments]
   );
 
-  const pendingIds = useMemo(() => 
-    pendingAssignments.map((a) => a.id),
-    [pendingAssignments]
-  );
-
   const remainingAssignments = useMemo(
     () => [...pendingAssignments, ...skippedAssignments],
     [pendingAssignments, skippedAssignments]
@@ -117,7 +115,12 @@ export function DayDetailPage() {
           <p className="muted">
             {daySummary.completed_count}/{daySummary.total_assignments} completed, {remainingAssignments.length} remaining
             {daySummary.total_time_ms > 0 && (
-              <span> • Total time: {formatMs(daySummary.total_time_ms)}</span>
+              <span>
+                {' '}• Total time: {formatMs(daySummary.total_time_ms)}
+                {daySummary.estimate_delta_ms !== null && (
+                  <> <DeltaChip deltaMs={daySummary.estimate_delta_ms} /></>
+                )}
+              </span>
             )}
           </p>
         </div>
@@ -210,7 +213,13 @@ function DayAssignmentCard({
         <p>{assignment.study_item.first_gloss ?? 'No gloss available'}</p>
         <small>
           {isCompleted && assignment.time_spent_ms !== null && (
-            <span>Time: {formatMs(assignment.time_spent_ms)} • </span>
+            <span>
+              Time: {formatMs(assignment.time_spent_ms)}
+              {assignment.estimated_ms !== null && (
+                <> <DeltaChip deltaMs={assignment.time_spent_ms - assignment.estimated_ms} /></>
+              )}
+              {' '}•{' '}
+            </span>
           )}
           {assignment.status}
         </small>

@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { DeltaChip } from '../components/DeltaChip.js';
 import { Heatmap } from '../components/Heatmap.js';
 import { ProgressCharts } from '../components/ProgressCharts.js';
 import { KanjiIcon } from '../components/KanjiIcon.js';
-import { apiRequest, formatMs, formatShortDate } from '../lib/api.js';
+import { useEstimate } from '../hooks/useEstimate.js';
+import { apiRequest, formatMs, formatMsEstimate, formatShortDate, todayDateString } from '../lib/api.js';
 
 type DashboardResponse = {
   today: {
@@ -24,6 +26,7 @@ type DashboardResponse = {
     skipped_count: number;
     total_time_ms: number;
     is_fully_completed: boolean;
+    estimate_delta_ms: number | null;
   }>;
 };
 
@@ -69,6 +72,8 @@ export function DashboardPage() {
   const [topKanji, setTopKanji] = useState<TopKanjiResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [yearOffset, setYearOffset] = useState(0);
+  const todayEstimate = useEstimate('/estimates/today');
+  const backlogEstimate = useEstimate('/estimates/backlog-days');
 
   const range = useMemo(() => {
     const toDate = new Date();
@@ -113,6 +118,10 @@ export function DashboardPage() {
 
   const hasTodayQueue = data.today.pending > 0;
   const hasBacklog = data.overdue.incomplete_days > 0;
+  // Server-gated day verdict: only the dashboard row for today, and only when
+  // the server returned a non-null `estimate_delta_ms` (today is strictly
+  // fully completed with full snapshot coverage).
+  const todayDeltaMs = data.heatmap.find((d) => d.date === todayDateString())?.estimate_delta_ms ?? null;
 
   return (
     <section>
@@ -138,16 +147,25 @@ export function DashboardPage() {
           <small>
             {data.today.completed} completed, {data.today.pending} remaining
           </small>
+          <small>
+            Estimate: {todayEstimate === null ? '—' : formatMsEstimate(todayEstimate)}
+          </small>
         </article>
         <article className="card stat-card">
           <h2>Overdue</h2>
           <p>{data.overdue.total_pending} open</p>
           <small>Oldest: {data.overdue.oldest_date ? formatShortDate(data.overdue.oldest_date) : 'none'}</small>
+          <small>Estimate: {backlogEstimate === null ? '—' : formatMsEstimate(backlogEstimate)}</small>
         </article>
         <article className="card stat-card">
           <h2>Today Time</h2>
           <p>{formatMs(data.today.total_time_ms)}</p>
           <small>Average: {formatMs(data.today.avg_time_per_assignment_ms)}</small>
+          {todayDeltaMs !== null && (
+            <small>
+              Day verdict: <DeltaChip deltaMs={todayDeltaMs} />
+            </small>
+          )}
         </article>
       </div>
 
