@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 
 import { RemoveButton } from './RemoveButton.js';
-import { formatShortDate } from '../lib/api.js';
+import { formatJapaneseDate } from '../lib/api.js';
 
 type Assignment = {
   id: number;
@@ -58,7 +58,7 @@ export function AssignmentList({
               <p className="kana">{assignment.study_item.selected_reading}</p>
               <p>{assignment.study_item.first_gloss ?? 'No gloss available'}</p>
               <small>
-                {formatShortDate(assignment.assigned_for_date)} - {assignment.status}
+                {formatJapaneseDate(assignment.assigned_for_date)} - {assignment.status}
               </small>
             </div>
             {onRemove && isRemovable ? (

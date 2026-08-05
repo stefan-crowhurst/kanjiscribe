@@ -417,6 +417,10 @@ nav a.active {
   margin: 0.15rem 0 0;
 }
 
+.today-date {
+  font-weight: bold;
+}
+
 .backlog-day-toggle {
   display: flex;
   align-items: baseline;
@@ -1350,9 +1354,10 @@ small {
   }
 
   .backlog-day-toggle {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.25rem;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.5rem;
   }
 
   .backlog-day-header .button {
