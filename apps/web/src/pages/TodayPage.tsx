@@ -5,7 +5,7 @@ import { AssignmentList } from '../components/AssignmentList.js';
 import { DeltaChip } from '../components/DeltaChip.js';
 import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
 import { useEstimate } from '../hooks/useEstimate.js';
-import { apiRequest, formatMsEstimate, todayDateString } from '../lib/api.js';
+import { apiRequest, formatJapaneseDate, formatMsEstimate, todayDateString } from '../lib/api.js';
 
 type Assignment = {
   id: number;
@@ -81,6 +81,7 @@ export function TodayPage() {
       <div className="today-header">
         <div>
           <h2>Today</h2>
+          <p className="muted today-date">{formatJapaneseDate(todayDateString())}</p>
           <p className="muted">
             {completed}/{total} drilled, {remaining} remaining
           </p>

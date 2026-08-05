@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { AssignmentList } from '../components/AssignmentList.js';
 import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
 import { useBacklogDayEstimates } from '../hooks/useEstimate.js';
-import { apiRequest, formatMsEstimate, formatShortDate } from '../lib/api.js';
+import { apiRequest, formatJapaneseDate, formatMsEstimate } from '../lib/api.js';
 
 type Assignment = {
   id: number;
@@ -92,7 +92,7 @@ export function BacklogPage() {
             const remaining = group.assignments.length;
 
             const query = dayDrillQuery(
-              formatShortDate(group.date),
+              formatJapaneseDate(group.date),
               group.assignments.map((assignment) => assignment.id)
             );
 
@@ -107,7 +107,7 @@ export function BacklogPage() {
                     <span className="backlog-day-chevron" aria-hidden="true">
                       ›
                     </span>
-                    <h3>{formatShortDate(group.date)}</h3>
+                    <h3>{formatJapaneseDate(group.date)}</h3>
                     <span className="backlog-day-stats">
                       {completed}/{total} drilled, {remaining} remaining
                       {dayEstimates[group.date] === undefined
