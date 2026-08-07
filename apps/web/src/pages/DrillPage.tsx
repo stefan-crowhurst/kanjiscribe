@@ -1,38 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import {
+  assignmentListResponseSchema,
+  assignmentSummaryResponseSchema,
+  drillPayloadSchema,
+  type DrillPayload
+} from '@kanjiscribe/shared';
 
 import { apiAssetUrl, apiRequest, formatMs } from '../lib/api.js';
-
-type DrillPayload = {
-  assignment: { id: number; assigned_for_date: string; status: string; origin: string };
-  study_item: { id: number; surface_form: string; selected_reading: string };
-  dictionary_entry: {
-    id: number;
-    is_common: boolean;
-    primary_spelling: string;
-    primary_reading: string;
-    senses: Array<{ sense_index: number; glosses: string[]; parts_of_speech: string[] }>;
-  };
-  kanji: Array<{
-    literal: string;
-    position: number;
-    meanings: string[];
-    onyomi: string[];
-    kunyomi: string[];
-    stroke_count: number;
-    grade: number | null;
-    stroke_asset_url: string | null;
-  }>;
-  queue: {
-    current_index: number;
-    total: number;
-    next_assignment_id: number | null;
-    prev_assignment_id: number | null;
-    day_completed_count: number;
-    day_total_count: number;
-  };
-  day_total_time_ms: number;
-};
 
 export function DrillPage() {
   const { assignmentId } = useParams();
@@ -97,7 +72,7 @@ export function DrillPage() {
     setIsSubmitting(false);
 
     const query = queueSource ? `?queue_source=${encodeURIComponent(queueSource)}` : '';
-    apiRequest<DrillPayload>(`/assignments/${assignmentId}/drill${query}`)
+    apiRequest(drillPayloadSchema, `/assignments/${assignmentId}/drill${query}`)
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load drill payload'));
   }, [assignmentId, queueSource]);
@@ -122,7 +97,7 @@ export function DrillPage() {
     setError(null);
 
     try {
-      await apiRequest(`/assignments/${data.assignment.id}/${action}`, {
+      await apiRequest(assignmentSummaryResponseSchema, `/assignments/${data.assignment.id}/${action}`, {
         method: 'POST',
         body: JSON.stringify({ time_spent_ms: elapsedMs })
       });
@@ -135,7 +110,8 @@ export function DrillPage() {
         nextAssignmentId = data.queue.next_assignment_id;
       } else {
         const today = data.assignment.assigned_for_date;
-        const pendingRes = await apiRequest<{ assignments: Array<{ id: number }> }>(
+        const pendingRes = await apiRequest(
+          assignmentListResponseSchema,
           `/assignments?status=pending&date=${today}`
         );
         nextAssignmentId = pendingRes.assignments[0]?.id ?? null;
@@ -163,7 +139,7 @@ export function DrillPage() {
     setError(null);
 
     try {
-      await apiRequest(`/assignments/${data.assignment.id}/reopen`, {
+      await apiRequest(assignmentSummaryResponseSchema, `/assignments/${data.assignment.id}/reopen`, {
         method: 'POST'
       });
 
@@ -171,7 +147,7 @@ export function DrillPage() {
       setElapsedMs(0);
 
       const query = queueSource ? `?queue_source=${encodeURIComponent(queueSource)}` : '';
-      const refreshedData = await apiRequest<DrillPayload>(`/assignments/${assignmentId}/drill${query}`);
+      const refreshedData = await apiRequest(drillPayloadSchema, `/assignments/${assignmentId}/drill${query}`);
       setData(refreshedData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reopen assignment');

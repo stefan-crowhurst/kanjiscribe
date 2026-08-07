@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { app } from './server.js';
-import { resetCounters, resetDb, seedAssignment, seedStudyItem } from './test-helpers.js';
-import { sqlite } from './db/client.js';
+import { app } from '../server.js';
+import { resetCounters, resetDb, seedAssignment, seedStudyItem } from '../test-helpers.js';
+import { sqlite } from '../db/client.js';
 
 function daySummary(date: string): { is_fully_completed: number; total_assignments: number; completed_count: number } {
   return sqlite

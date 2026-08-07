@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { app } from './server.js';
-import { sqlite } from './test-setup.js';
+import { app } from '../server.js';
+import { sqlite } from '../test-setup.js';
 import {
   resetCounters,
   resetDb,
   seedAssignment,
   seedStudyItem
-} from './test-helpers.js';
+} from '../test-helpers.js';
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);

@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { app } from './server.js';
-import { sqlite } from './test-setup.js';
+import { app } from '../server.js';
+import { sqlite } from '../test-setup.js';
 import {
   resetCounters,
   resetDb,
   seedAssignment,
   seedStudyItem
-} from './test-helpers.js';
+} from '../test-helpers.js';
 
 type EstimateResponse = {
   estimated_remaining_ms: number;
@@ -256,6 +256,7 @@ describe('GET /estimates/backlog-day', () => {
     });
 
     expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: 'Invalid date' });
   });
 
   it('sets no HTTP cache headers', async () => {

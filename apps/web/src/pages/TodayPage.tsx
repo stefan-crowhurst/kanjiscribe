@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  assignmentListResponseSchema,
+  dashboardResponseSchema,
+  type Assignment,
+  type HeatmapDay
+} from '@kanjiscribe/shared';
 
 import { AssignmentList } from '../components/AssignmentList.js';
 import { DeltaChip } from '../components/DeltaChip.js';
@@ -7,29 +13,7 @@ import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
 import { useEstimate } from '../hooks/useEstimate.js';
 import { apiRequest, formatJapaneseDate, formatMsEstimate, todayDateString } from '../lib/api.js';
 
-type Assignment = {
-  id: number;
-  assigned_for_date: string;
-  status: string;
-  study_item: { surface_form: string; selected_reading: string; first_gloss: string | null };
-};
-
-type DayStats = {
-  total_assignments: number;
-  completed_count: number;
-  pending_count: number;
-};
-
-type DaySummaryResponse = {
-  date: string;
-  total_assignments: number;
-  completed_count: number;
-  pending_count: number;
-  skipped_count: number;
-  total_time_ms: number;
-  is_fully_completed: boolean;
-  estimate_delta_ms: number | null;
-};
+type DayStats = Pick<HeatmapDay, 'total_assignments' | 'completed_count' | 'pending_count'>;
 
 export function TodayPage() {
   const [assignments, setAssignments] = useState<Assignment[] | null>(null);
@@ -41,8 +25,8 @@ export function TodayPage() {
   const refresh = useCallback(async () => {
     const today = todayDateString();
     const [assignmentsRes, statsRes] = await Promise.all([
-      apiRequest<{ assignments: Assignment[] }>(`/assignments?date=${today}`),
-      apiRequest<{ heatmap: DaySummaryResponse[] }>(`/stats/dashboard?from=${today}&to=${today}`)
+      apiRequest(assignmentListResponseSchema, `/assignments?date=${today}`),
+      apiRequest(dashboardResponseSchema, `/stats/dashboard?from=${today}&to=${today}`)
     ]);
     setAssignments(assignmentsRes.assignments);
     const todayStats = statsRes.heatmap.find((d) => d.date === today);

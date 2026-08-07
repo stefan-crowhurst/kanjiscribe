@@ -1,7 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import { computeCellWrites, type PerWriteTime } from '@kanjiscribe/shared';
 
-import { fetchStudyItemKanji, KANA_MS_PER_WRITE, type StudyItemKanji } from './attribution.js';
+import { fetchStudyItemKanji, KANA_MS_PER_WRITE, type StudyItemKanji } from '../attribution.js';
 
 /**
  * Floor per-stroke handwriting time used when no kanji have been drilled

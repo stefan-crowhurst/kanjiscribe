@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { app } from './server.js';
-import { resetCounters, resetDb, seedAssignment, seedStudyItem } from './test-helpers.js';
+import { app } from '../server.js';
+import { resetCounters, resetDb, seedAssignment, seedStudyItem } from '../test-helpers.js';
 
 describe('GET /stats/dashboard today counts exclude archived assignments', () => {
   beforeEach(() => {

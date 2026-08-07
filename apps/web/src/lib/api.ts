@@ -1,3 +1,7 @@
+import { z } from 'zod';
+
+import { assignmentSummaryResponseSchema } from '@kanjiscribe/shared';
+
 declare const __API_PORT__: string;
 
 function getDefaultApiBase(): string {
@@ -17,7 +21,16 @@ export function apiAssetUrl(path: string): string {
   return `${API_BASE}${path}`;
 }
 
-export async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
+/**
+ * Fetch a JSON endpoint and parse the response through `schema` (ADR-0006):
+ * a response that fails the schema rejects with an error naming the endpoint,
+ * never a silent pass-through.
+ */
+export async function apiRequest<T extends z.ZodTypeAny>(
+  schema: T,
+  path: string,
+  options?: RequestInit
+): Promise<z.infer<T>> {
   const headers: Record<string, string> = {};
 
   // Only set Content-Type if there's a body to send
@@ -44,11 +57,16 @@ export async function apiRequest<T>(path: string, options?: RequestInit): Promis
     throw new Error(body?.error ?? `Request failed (${response.status})`);
   }
 
-  return (await response.json()) as T;
+  const data: unknown = await response.json();
+  const parsed = schema.safeParse(data);
+  if (!parsed.success) {
+    throw new Error(`Invalid response from ${path}: ${parsed.error.message}`);
+  }
+  return parsed.data;
 }
 
 export async function archiveAssignment(id: number): Promise<void> {
-  await apiRequest<{ assignment: { id: number; status: string } }>(`/assignments/${id}/archive`, {
+  await apiRequest(assignmentSummaryResponseSchema, `/assignments/${id}/archive`, {
     method: 'POST'
   });
 }

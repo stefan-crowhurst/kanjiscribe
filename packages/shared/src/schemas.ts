@@ -26,17 +26,6 @@ export const updateAssignmentTimeSchema = z.object({
   time_spent_ms: z.number().int().min(0).optional()
 });
 
-export const assignmentSummarySchema = z.object({
-  id: z.number().int().positive(),
-  study_item_id: z.number().int().positive(),
-  assigned_for_date: dateSchema,
-  status: assignmentStatusSchema,
-  origin: assignmentOriginSchema,
-  time_spent_ms: z.number().int().nullable(),
-  created_at: timestampSchema,
-  completed_at: timestampSchema.nullable()
-});
-
 export const assignmentsQuerySchema = z.object({
   status: assignmentStatusSchema.optional(),
   date: dateSchema.optional()

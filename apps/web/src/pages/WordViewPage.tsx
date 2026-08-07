@@ -1,35 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { viewPayloadSchema, type ViewPayload } from '@kanjiscribe/shared';
 
 import { apiAssetUrl, apiRequest, formatMs } from '../lib/api.js';
-
-type ViewPayload = {
-  assignment: { 
-    id: number; 
-    assigned_for_date: string; 
-    status: string; 
-    origin: string;
-    time_spent_ms: number | null;
-  };
-  study_item: { id: number; surface_form: string; selected_reading: string };
-  dictionary_entry: {
-    id: number;
-    is_common: boolean;
-    primary_spelling: string;
-    primary_reading: string;
-    senses: Array<{ sense_index: number; glosses: string[]; parts_of_speech: string[] }>;
-  };
-  kanji: Array<{
-    literal: string;
-    position: number;
-    meanings: string[];
-    onyomi: string[];
-    kunyomi: string[];
-    stroke_count: number;
-    grade: number | null;
-    stroke_asset_url: string | null;
-  }>;
-};
 
 export function WordViewPage() {
   const { assignmentId } = useParams();
@@ -59,7 +32,7 @@ export function WordViewPage() {
 
     setError(null);
 
-    apiRequest<ViewPayload>(`/assignments/${assignmentId}/view`)
+    apiRequest(viewPayloadSchema, `/assignments/${assignmentId}/view`)
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load word details'));
   }, [assignmentId]);

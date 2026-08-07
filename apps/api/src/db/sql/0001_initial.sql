@@ -194,19 +194,4 @@ FROM study_item_kanji sik
 JOIN daily_assignment da ON da.study_item_id = sik.study_item_id
 GROUP BY sik.kanji_literal;
 
-CREATE VIEW IF NOT EXISTS v_backlog_summary AS
-SELECT
-  da.id AS assignment_id,
-  da.study_item_id,
-  si.surface_form,
-  si.selected_reading,
-  da.assigned_for_date,
-  da.status,
-  da.origin,
-  julianday('now') - julianday(da.assigned_for_date) AS days_overdue
-FROM daily_assignment da
-JOIN study_item si ON si.id = da.study_item_id
-WHERE da.status IN ('pending', 'skipped')
-ORDER BY da.assigned_for_date ASC;
-
 COMMIT;

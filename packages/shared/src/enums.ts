@@ -7,6 +7,14 @@ export type AssignmentOrigin = (typeof ASSIGNMENT_ORIGINS)[number];
 export const SOURCE_TYPES = ['manual', 'anki'] as const;
 export type SourceType = (typeof SOURCE_TYPES)[number];
 
+export const DICTIONARY_MATCH_TYPES = [
+  'exact_spelling',
+  'exact_reading',
+  'prefix_spelling',
+  'prefix_reading'
+] as const;
+export type DictionaryMatchType = (typeof DICTIONARY_MATCH_TYPES)[number];
+
 export const EVENT_TYPES = [
   'added_manual',
   'added_anki',

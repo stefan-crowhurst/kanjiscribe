@@ -1,17 +1,14 @@
 import { useCallback } from 'react';
+import type { Assignment } from '@kanjiscribe/shared';
 
 import { archiveAssignment } from '../lib/api.js';
-
-type RemovableAssignment = {
-  id: number;
-};
 
 export function useArchiveRemoval(
   refresh: () => Promise<void>,
   setError: (message: string | null) => void
 ) {
   const handleRemove = useCallback(
-    async (assignment: RemovableAssignment) => {
+    async (assignment: Assignment) => {
       try {
         await archiveAssignment(assignment.id);
         await refresh();

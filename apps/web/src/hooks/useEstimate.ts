@@ -1,16 +1,14 @@
 import { useEffect, useState } from 'react';
 
-import { apiRequest } from '../lib/api.js';
+import { estimatesResponseSchema } from '@kanjiscribe/shared';
 
-type EstimateResponse = {
-  estimated_remaining_ms: number;
-};
+import { apiRequest } from '../lib/api.js';
 
 export function useEstimate(endpoint: string): number | null {
   const [estimate, setEstimate] = useState<number | null>(null);
 
   useEffect(() => {
-    apiRequest<EstimateResponse>(endpoint)
+    apiRequest(estimatesResponseSchema, endpoint)
       .then((res) => setEstimate(res.estimated_remaining_ms))
       .catch(() => {});
   }, [endpoint]);
@@ -23,7 +21,7 @@ export function useBacklogDayEstimates(dates: string[]): Record<string, number> 
 
   useEffect(() => {
     for (const date of dates) {
-      apiRequest<EstimateResponse>(`/estimates/backlog-day?date=${date}`)
+      apiRequest(estimatesResponseSchema, `/estimates/backlog-day?date=${date}`)
         .then((res) => {
           setEstimates((current) => ({ ...current, [date]: res.estimated_remaining_ms }));
         })
