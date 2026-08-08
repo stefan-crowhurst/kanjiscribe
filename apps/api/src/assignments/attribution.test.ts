@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { app } from './server.js';
-import { sqlite } from './test-setup.js';
+import { app } from '../server.js';
+import { sqlite } from '../test-setup.js';
 import {
   resetCounters,
   resetDb,
@@ -9,7 +9,7 @@ import {
   seedKanji,
   seedStudyItem,
   seedStudyItemKanji
-} from './test-helpers.js';
+} from '../test-helpers.js';
 
 type AttributionRow = {
   assignment_id: number;
@@ -364,7 +364,7 @@ describe('Attribution backfill migration', () => {
     // At this point resetDb has removed any previously-applied backfill flag and
     // the kanji_attribution table is empty. Re-running migrations triggers the
     // backfill just like a first deploy.
-    const { runMigrationsOnDb } = await import('./db/run-migrations.js');
+    const { runMigrationsOnDb } = await import('../db/run-migrations.js');
     await runMigrationsOnDb(sqlite);
 
     const rows = getAllAttributionRows();

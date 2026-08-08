@@ -1,37 +1,19 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type DashboardResponse, type DictionarySearchResult } from '@kanjiscribe/shared';
 
-import { apiRequest, todayDateString } from '../lib/api.js';
-
-type SearchResult = {
-  entry_id: number;
-  primary_spelling: string | null;
-  primary_reading: string | null;
-  glosses: string[];
-  is_common: boolean;
-  readings: Array<{ text: string; no_kanji: boolean }>;
-  spellings: Array<{ text: string; is_primary: boolean }>;
-  today_assigned: boolean;
-  match_type: string;
-};
-
-type SearchResponse = { results: SearchResult[] };
-
-type DashboardStatsResponse = {
-  today: { total: number };
-  overdue: { total_pending: number; incomplete_days: number; oldest_date: string | null };
-};
+import { getDashboardStats, intakeStudyItem, searchDictionary, todayDateString } from '../lib/api.js';
 
 export function IntakePage() {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [results, setResults] = useState<DictionarySearchResult[]>([]);
   const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null);
   const [selectedReading, setSelectedReading] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const [intakeStats, setIntakeStats] = useState<DashboardStatsResponse | null>(null);
+  const [intakeStats, setIntakeStats] = useState<DashboardResponse | null>(null);
 
   const selectedEntry = useMemo(
     () => results.find((entry) => entry.entry_id === selectedEntryId) ?? null,
@@ -40,7 +22,7 @@ export function IntakePage() {
 
   async function loadIntakeStats() {
     try {
-      const dashboardStats = await apiRequest<DashboardStatsResponse>('/stats/dashboard');
+      const dashboardStats = await getDashboardStats();
       setIntakeStats(dashboardStats);
     } catch {
       setIntakeStats(null);
@@ -73,9 +55,7 @@ export function IntakePage() {
     setIsSearching(true);
 
     try {
-      const response = await apiRequest<SearchResponse>(
-        `/dictionary/search?q=${encodeURIComponent(query.trim())}`
-      );
+      const response = await searchDictionary(query.trim());
       setResults(response.results);
       if (response.results.length === 1) {
         const onlyResult = response.results[0];
@@ -117,15 +97,12 @@ export function IntakePage() {
 
     try {
       const surfaceForm = selectedEntry.primary_spelling ?? query.trim();
-      await apiRequest('/study-items/intake', {
-        method: 'POST',
-        body: JSON.stringify({
-          surface_form: surfaceForm,
-          selected_reading: selectedReading,
-          dictionary_entry_id: selectedEntry.entry_id,
-          source_type: 'manual',
-          assigned_for_date: todayDateString()
-        })
+      await intakeStudyItem({
+        surface_form: surfaceForm,
+        selected_reading: selectedReading,
+        dictionary_entry_id: selectedEntry.entry_id,
+        source_type: 'manual',
+        assigned_for_date: todayDateString()
       });
 
       setStatus(`Added ${surfaceForm} (${selectedReading}) to today's assignments.`);

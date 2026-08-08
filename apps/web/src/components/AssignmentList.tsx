@@ -1,18 +1,8 @@
 import { useNavigate } from 'react-router-dom';
+import type { Assignment } from '@kanjiscribe/shared';
 
 import { RemoveButton } from './RemoveButton.js';
 import { formatJapaneseDate } from '../lib/api.js';
-
-type Assignment = {
-  id: number;
-  assigned_for_date: string;
-  status: string;
-  study_item: {
-    surface_form: string;
-    selected_reading: string;
-    first_gloss: string | null;
-  };
-};
 
 export function AssignmentList({
   assignments,
@@ -44,7 +34,7 @@ export function AssignmentList({
         const drillQuery = getDrillQuery?.(assignment) ?? (queueSource ? `?queue_source=${queueSource}` : '');
         const drillPath = `/drill/${assignment.id}${drillQuery}`;
         const viewPath = `/word/${assignment.id}?day=${assignment.assigned_for_date}`;
-        const cardUrl = isPending ? drillPath : viewPath;
+        const cardUrl = isCompleted ? viewPath : drillPath;
 
         return (
           <article

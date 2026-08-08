@@ -10,32 +10,9 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
+import { type DashboardResponse } from '@kanjiscribe/shared';
 
-import { apiRequest, formatMs, formatShortDate } from '../lib/api.js';
-
-type ChartDay = {
-  date: string;
-  total_assignments: number;
-  completed_count: number;
-  pending_count: number;
-  skipped_count: number;
-  total_time_ms: number;
-  is_fully_completed: boolean;
-  estimated_total_ms: number | null;
-};
-
-type DashboardResponse = {
-  today: {
-    total: number;
-    pending: number;
-    completed: number;
-    total_time_ms: number;
-    avg_time_per_assignment_ms: number;
-  };
-  overdue: { total_pending: number; incomplete_days: number; oldest_date: string | null };
-  totals: { total_time_ms: number; total_completed: number; avg_time_per_assignment_ms: number };
-  heatmap: ChartDay[];
-};
+import { formatMs, formatShortDate, getDashboardStats } from '../lib/api.js';
 
 type TimeInterval = 7 | 14 | 30;
 
@@ -205,7 +182,7 @@ export function ProgressCharts() {
   }, [pageOffset, intervalDays]);
 
   useEffect(() => {
-    apiRequest<DashboardResponse>(`/stats/dashboard?from=${range.from}&to=${range.to}`)
+    getDashboardStats(range.from, range.to)
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load charts'));
   }, [range.from, range.to]);

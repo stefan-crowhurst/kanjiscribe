@@ -1,38 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { type DrillPayload } from '@kanjiscribe/shared';
 
-import { apiAssetUrl, apiRequest, formatMs } from '../lib/api.js';
-
-type DrillPayload = {
-  assignment: { id: number; assigned_for_date: string; status: string; origin: string };
-  study_item: { id: number; surface_form: string; selected_reading: string };
-  dictionary_entry: {
-    id: number;
-    is_common: boolean;
-    primary_spelling: string;
-    primary_reading: string;
-    senses: Array<{ sense_index: number; glosses: string[]; parts_of_speech: string[] }>;
-  };
-  kanji: Array<{
-    literal: string;
-    position: number;
-    meanings: string[];
-    onyomi: string[];
-    kunyomi: string[];
-    stroke_count: number;
-    grade: number | null;
-    stroke_asset_url: string | null;
-  }>;
-  queue: {
-    current_index: number;
-    total: number;
-    next_assignment_id: number | null;
-    prev_assignment_id: number | null;
-    day_completed_count: number;
-    day_total_count: number;
-  };
-  day_total_time_ms: number;
-};
+import {
+  apiAssetUrl,
+  completeAssignment,
+  formatMs,
+  getDrillPayload,
+  listAssignments,
+  reopenAssignment,
+  skipAssignment
+} from '../lib/api.js';
 
 export function DrillPage() {
   const { assignmentId } = useParams();
@@ -96,8 +74,7 @@ export function DrillPage() {
     setIsReopening(false);
     setIsSubmitting(false);
 
-    const query = queueSource ? `?queue_source=${encodeURIComponent(queueSource)}` : '';
-    apiRequest<DrillPayload>(`/assignments/${assignmentId}/drill${query}`)
+    getDrillPayload(Number(assignmentId), queueSource ?? undefined)
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load drill payload'));
   }, [assignmentId, queueSource]);
@@ -122,10 +99,11 @@ export function DrillPage() {
     setError(null);
 
     try {
-      await apiRequest(`/assignments/${data.assignment.id}/${action}`, {
-        method: 'POST',
-        body: JSON.stringify({ time_spent_ms: elapsedMs })
-      });
+      if (action === 'complete') {
+        await completeAssignment(data.assignment.id, elapsedMs);
+      } else {
+        await skipAssignment(data.assignment.id, elapsedMs);
+      }
 
       let nextAssignmentId: number | null;
 
@@ -135,9 +113,7 @@ export function DrillPage() {
         nextAssignmentId = data.queue.next_assignment_id;
       } else {
         const today = data.assignment.assigned_for_date;
-        const pendingRes = await apiRequest<{ assignments: Array<{ id: number }> }>(
-          `/assignments?status=pending&date=${today}`
-        );
+        const pendingRes = await listAssignments({ status: 'pending', date: today });
         nextAssignmentId = pendingRes.assignments[0]?.id ?? null;
       }
 
@@ -154,7 +130,7 @@ export function DrillPage() {
     }
   }
 
-  async function reopenAssignment() {
+  async function handleReopen() {
     if (!data) {
       return;
     }
@@ -163,15 +139,12 @@ export function DrillPage() {
     setError(null);
 
     try {
-      await apiRequest(`/assignments/${data.assignment.id}/reopen`, {
-        method: 'POST'
-      });
+      await reopenAssignment(data.assignment.id);
 
       // Reset timer and refresh data
       setElapsedMs(0);
 
-      const query = queueSource ? `?queue_source=${encodeURIComponent(queueSource)}` : '';
-      const refreshedData = await apiRequest<DrillPayload>(`/assignments/${assignmentId}/drill${query}`);
+      const refreshedData = await getDrillPayload(Number(assignmentId), queueSource ?? undefined);
       setData(refreshedData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reopen assignment');
@@ -250,7 +223,7 @@ export function DrillPage() {
           {isCompleted ? (
             <button 
               className="button" 
-              onClick={reopenAssignment}
+              onClick={handleReopen}
               disabled={isReopening}
             >
               {isReopening ? 'Reopening...' : 'Reopen'}

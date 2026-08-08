@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { app } from './server.js';
-import { sqlite } from './test-setup.js';
+import { app } from '../server.js';
+import { sqlite } from '../test-setup.js';
 import {
   resetCounters,
   resetDb,
@@ -9,7 +9,7 @@ import {
   seedKanji,
   seedStudyItem,
   seedStudyItemKanji
-} from './test-helpers.js';
+} from '../test-helpers.js';
 
 type IntakeAssignment = {
   id: number;

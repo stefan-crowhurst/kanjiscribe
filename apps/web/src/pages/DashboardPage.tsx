@@ -1,69 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  type DashboardResponse,
+  type SlowestWordsResponse,
+  type TopKanjiResponse,
+  type TopWordsResponse
+} from '@kanjiscribe/shared';
 
 import { DeltaChip } from '../components/DeltaChip.js';
 import { Heatmap } from '../components/Heatmap.js';
 import { ProgressCharts } from '../components/ProgressCharts.js';
 import { KanjiIcon } from '../components/KanjiIcon.js';
 import { useEstimate } from '../hooks/useEstimate.js';
-import { apiRequest, formatMs, formatMsEstimate, formatShortDate, todayDateString } from '../lib/api.js';
-
-type DashboardResponse = {
-  today: {
-    total: number;
-    pending: number;
-    completed: number;
-    total_time_ms: number;
-    avg_time_per_assignment_ms: number;
-  };
-  overdue: { total_pending: number; incomplete_days: number; oldest_date: string | null };
-  totals: { total_time_ms: number; total_completed: number; avg_time_per_assignment_ms: number };
-  heatmap: Array<{
-    date: string;
-    total_assignments: number;
-    completed_count: number;
-    pending_count: number;
-    skipped_count: number;
-    total_time_ms: number;
-    is_fully_completed: boolean;
-    estimate_delta_ms: number | null;
-  }>;
-};
-
-type TopWordsResponse = {
-  words: Array<{
-    study_item_id: number;
-    surface_form: string;
-    selected_reading: string;
-    times_completed: number;
-    total_time_ms: number;
-    avg_completion_time_ms: number;
-  }>;
-};
-
-type SlowestWordsResponse = {
-  words: Array<{
-    study_item_id: number;
-    surface_form: string;
-    selected_reading: string;
-    times_completed: number;
-    total_time_ms: number;
-    avg_completion_time_ms: number;
-  }>;
-};
-
-type TopKanjiResponse = {
-  kanji: Array<{
-    literal: string;
-    word_count: number;
-    total_assignments: number;
-    times_drilled: number;
-    onyomi: string[];
-    kunyomi: string[];
-    stroke_count: number;
-    grade: number | null;
-  }>;
-};
+import {
+  formatMs,
+  formatMsEstimate,
+  formatShortDate,
+  getDashboardStats,
+  getSlowestWords,
+  getTopKanji,
+  getTopWords,
+  todayDateString
+} from '../lib/api.js';
 
 export function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
@@ -72,8 +30,8 @@ export function DashboardPage() {
   const [topKanji, setTopKanji] = useState<TopKanjiResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [yearOffset, setYearOffset] = useState(0);
-  const todayEstimate = useEstimate('/estimates/today');
-  const backlogEstimate = useEstimate('/estimates/backlog-days');
+  const todayEstimate = useEstimate('today');
+  const backlogEstimate = useEstimate('backlog-days');
 
   const range = useMemo(() => {
     const toDate = new Date();
@@ -89,17 +47,13 @@ export function DashboardPage() {
   }, [yearOffset]);
 
   useEffect(() => {
-    apiRequest<DashboardResponse>(`/stats/dashboard?from=${range.from}&to=${range.to}`)
+    getDashboardStats(range.from, range.to)
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load dashboard'));
   }, [range.from, range.to]);
 
   useEffect(() => {
-    Promise.all([
-      apiRequest<TopWordsResponse>('/stats/top-words'),
-      apiRequest<SlowestWordsResponse>('/stats/slowest-words'),
-      apiRequest<TopKanjiResponse>('/stats/top-kanji')
-    ])
+    Promise.all([getTopWords(), getSlowestWords(), getTopKanji()])
       .then(([top, slowest, kanji]) => {
         setTopWords(top);
         setSlowestWords(slowest);

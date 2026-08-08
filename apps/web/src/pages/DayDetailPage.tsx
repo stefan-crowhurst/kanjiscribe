@@ -1,39 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { type Assignment, type HeatmapDay } from '@kanjiscribe/shared';
 
 import { DeltaChip } from '../components/DeltaChip.js';
 import { RemoveButton } from '../components/RemoveButton.js';
 import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
-import { apiRequest, formatMs } from '../lib/api.js';
-
-type Assignment = {
-  id: number;
-  assigned_for_date: string;
-  status: string;
-  time_spent_ms: number | null;
-  estimated_ms: number | null;
-  study_item: { 
-    surface_form: string; 
-    selected_reading: string; 
-    first_gloss: string | null;
-  };
-};
-
-type DaySummary = {
-  date: string;
-  total_assignments: number;
-  completed_count: number;
-  pending_count: number;
-  skipped_count: number;
-  total_time_ms: number;
-  estimate_delta_ms: number | null;
-  is_fully_completed: boolean;
-};
+import { formatMs, getDashboardStats, listAssignments } from '../lib/api.js';
 
 export function DayDetailPage() {
   const { date } = useParams();
   const [assignments, setAssignments] = useState<Assignment[] | null>(null);
-  const [daySummary, setDaySummary] = useState<DaySummary | null>(null);
+  const [daySummary, setDaySummary] = useState<HeatmapDay | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -42,8 +19,8 @@ export function DayDetailPage() {
     }
 
     const [assignmentsRes, statsRes] = await Promise.all([
-      apiRequest<{ assignments: Assignment[] }>(`/assignments?date=${date}`),
-      apiRequest<{ heatmap: DaySummary[] }>(`/stats/dashboard?from=${date}&to=${date}`)
+      listAssignments({ date }),
+      getDashboardStats(date, date)
     ]);
     setAssignments(assignmentsRes.assignments);
     const summary = statsRes.heatmap.find((d) => d.date === date);
@@ -196,7 +173,7 @@ function DayAssignmentCard({
     ? `/word/${assignment.id}?day=${dayDate}&ids=${allIds.join(',')}`
     : `/word/${assignment.id}?day=${dayDate}`;
   const drillUrl = `/drill/${assignment.id}?queue_source=today`;
-  const cardUrl = isPending ? drillUrl : viewUrl;
+  const cardUrl = isCompleted ? viewUrl : drillUrl;
 
   const removeButton =
     onRemove && isRemovable ? <RemoveButton onConfirm={() => onRemove(assignment)} /> : null;

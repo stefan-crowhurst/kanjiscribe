@@ -9,7 +9,7 @@ A scheduled instance of a study item for a specific day (`assigned_for_date`).
 _Avoid_: task, card, review
 
 **Archived** (assignment status):
-An assignment retained for history but excluded from all active queues, day counts, and dashboard totals. The "removed from the day" state — terminal from the user's point of view, but recoverable via the `unarchive` API endpoint.
+An assignment retained for history but excluded from all active queues, day counts, dashboard totals, and per-assignment reads — drill and word view both refuse it with 409. The "removed from the day" state — terminal from the user's point of view, but recoverable via the `unarchive` API endpoint.
 _Avoid_: deleted, removed (use "Removed" only for the user-facing action verb)
 
 **Removed** (action):
@@ -78,7 +78,7 @@ pending ──complete──→ completed
 
 - **archive** (Removal): valid only from `pending` or `skipped`.
 - **unarchive** (Restore): valid only from `archived`, returns to `pending`. Reachable via API only.
-- **complete / skip / reopen / drill**: reject `archived` assignments with `409 Conflict`. An archived assignment is not assignable and cannot transition to a study state.
+- **complete / skip / reopen / drill / view**: reject `archived` assignments with `409 Conflict`. An archived assignment is not assignable, cannot transition to a study state, and cannot be inspected through the drill or word-view surfaces.
 
 ## Day's queue
 

@@ -1,17 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import type { HeatmapDay } from '@kanjiscribe/shared';
 import { DeltaChip } from './DeltaChip.js';
-
-type HeatmapDay = {
-  date: string;
-  total_assignments: number;
-  completed_count: number;
-  pending_count: number;
-  skipped_count: number;
-  total_time_ms: number;
-  is_fully_completed: boolean;
-  estimate_delta_ms: number | null;
-};
 
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

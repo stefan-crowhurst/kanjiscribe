@@ -1,30 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { type Assignment, type BacklogResponse } from '@kanjiscribe/shared';
 
 import { AssignmentList } from '../components/AssignmentList.js';
 import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
 import { useBacklogDayEstimates } from '../hooks/useEstimate.js';
-import { apiRequest, formatJapaneseDate, formatMsEstimate } from '../lib/api.js';
-
-type Assignment = {
-  id: number;
-  assigned_for_date: string;
-  status: string;
-  study_item: { surface_form: string; selected_reading: string; first_gloss: string | null };
-};
-
-type AssignmentsResponse = {
-  assignments: Assignment[];
-  dayStats: Record<string, { total_assignments: number; completed_count: number; pending_count: number }>;
-};
+import { formatJapaneseDate, formatMsEstimate, getBacklog } from '../lib/api.js';
 
 export function BacklogPage() {
-  const [data, setData] = useState<AssignmentsResponse | null>(null);
+  const [data, setData] = useState<BacklogResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
 
   const refresh = useCallback(async () => {
-    const refreshed = await apiRequest<AssignmentsResponse>('/assignments/backlog');
+    const refreshed = await getBacklog();
     setData(refreshed);
   }, []);
 

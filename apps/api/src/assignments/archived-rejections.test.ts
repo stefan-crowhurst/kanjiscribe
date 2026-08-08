@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { app } from './server.js';
-import { resetCounters, resetDb, seedAssignment, seedStudyItem } from './test-helpers.js';
+import { app } from '../server.js';
+import { resetCounters, resetDb, seedAssignment, seedStudyItem } from '../test-helpers.js';
 
 describe('archived assignments reject study-state transitions with 409', () => {
   beforeEach(() => {
@@ -55,6 +55,19 @@ describe('archived assignments reject study-state transitions with 409', () => {
     const res = await app.inject({
       method: 'GET',
       url: `/assignments/${assignment.id}/drill`
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(JSON.parse(res.body).error).toMatch(/archived/i);
+  });
+
+  it('GET /assignments/:id/view on archived returns 409', async () => {
+    const studyItemId = seedStudyItem();
+    const assignment = seedAssignment({ study_item_id: studyItemId, status: 'archived' });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/assignments/${assignment.id}/view`
     });
 
     expect(res.statusCode).toBe(409);
