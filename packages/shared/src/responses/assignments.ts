@@ -13,9 +13,9 @@ import {
  * `{ assignment }`.
  */
 export const assignmentSummarySchema = z.object({
-  id: z.number(),
+  id: z.number().int().positive(),
   status: assignmentStatusSchema,
-  time_spent_ms: z.number().nullable(),
+  time_spent_ms: z.number().int().min(0).nullable(),
   completed_at: timestampSchema.nullable()
 });
 
@@ -32,13 +32,13 @@ export type AssignmentSummaryResponse = z.infer<typeof assignmentSummaryResponse
  * the Today, day detail, and backlog surfaces.
  */
 export const assignmentSchema = z.object({
-  id: z.number(),
-  study_item_id: z.number(),
+  id: z.number().int().positive(),
+  study_item_id: z.number().int().positive(),
   assigned_for_date: dateSchema,
   status: assignmentStatusSchema,
   origin: assignmentOriginSchema,
-  time_spent_ms: z.number().nullable(),
-  estimated_ms: z.number().nullable(),
+  time_spent_ms: z.number().int().min(0).nullable(),
+  estimated_ms: z.number().int().min(0).nullable(),
   created_at: timestampSchema,
   completed_at: timestampSchema.nullable(),
   study_item: z.object({
@@ -58,9 +58,9 @@ export type AssignmentListResponse = z.infer<typeof assignmentListResponseSchema
 
 const backlogDayStatsSchema = z.object({
   date: dateSchema,
-  total_assignments: z.number(),
-  completed_count: z.number(),
-  pending_count: z.number()
+  total_assignments: z.number().int().min(0),
+  completed_count: z.number().int().min(0),
+  pending_count: z.number().int().min(0)
 });
 
 /**
@@ -75,19 +75,19 @@ export const backlogResponseSchema = z.object({
 export type BacklogResponse = z.infer<typeof backlogResponseSchema>;
 
 const detailStudyItemSchema = z.object({
-  id: z.number(),
+  id: z.number().int().positive(),
   surface_form: z.string(),
   selected_reading: z.string()
 });
 
 const detailDictionaryEntrySchema = z.object({
-  id: z.number(),
+  id: z.number().int().positive(),
   is_common: z.boolean(),
   primary_spelling: z.string(),
   primary_reading: z.string(),
   senses: z.array(
     z.object({
-      sense_index: z.number(),
+      sense_index: z.number().int().min(0),
       glosses: z.array(z.string()),
       parts_of_speech: z.array(z.string())
     })
@@ -96,14 +96,14 @@ const detailDictionaryEntrySchema = z.object({
 
 const detailKanjiSchema = z.object({
   literal: z.string(),
-  position: z.number(),
+  position: z.number().int().min(0),
   meanings: z.array(z.string()),
   onyomi: z.array(z.string()),
   kunyomi: z.array(z.string()),
-  stroke_count: z.number(),
-  grade: z.number().nullable(),
-  jlpt_level: z.number().nullable(),
-  frequency_rank: z.number().nullable(),
+  stroke_count: z.number().int().min(0),
+  grade: z.number().int().positive().nullable(),
+  jlpt_level: z.number().int().positive().nullable(),
+  frequency_rank: z.number().int().positive().nullable(),
   stroke_asset_url: z.string().nullable()
 });
 
@@ -114,11 +114,11 @@ const detailKanjiSchema = z.object({
  */
 export const viewPayloadSchema = z.object({
   assignment: z.object({
-    id: z.number(),
+    id: z.number().int().positive(),
     assigned_for_date: dateSchema,
     status: assignmentStatusSchema,
     origin: assignmentOriginSchema,
-    time_spent_ms: z.number().nullable()
+    time_spent_ms: z.number().int().min(0).nullable()
   }),
   study_item: detailStudyItemSchema,
   dictionary_entry: detailDictionaryEntrySchema,
@@ -128,12 +128,12 @@ export const viewPayloadSchema = z.object({
 export type ViewPayload = z.infer<typeof viewPayloadSchema>;
 
 export const drillQueueSchema = z.object({
-  current_index: z.number(),
-  total: z.number(),
-  next_assignment_id: z.number().nullable(),
-  prev_assignment_id: z.number().nullable(),
-  day_completed_count: z.number(),
-  day_total_count: z.number()
+  current_index: z.number().int().min(0),
+  total: z.number().int().min(0),
+  next_assignment_id: z.number().int().positive().nullable(),
+  prev_assignment_id: z.number().int().positive().nullable(),
+  day_completed_count: z.number().int().min(0),
+  day_total_count: z.number().int().min(0)
 });
 
 export type DrillQueue = z.infer<typeof drillQueueSchema>;
@@ -145,7 +145,7 @@ export type DrillQueue = z.infer<typeof drillQueueSchema>;
  */
 export const drillPayloadSchema = viewPayloadSchema.extend({
   queue: drillQueueSchema,
-  day_total_time_ms: z.number()
+  day_total_time_ms: z.number().int().min(0)
 });
 
 export type DrillPayload = z.infer<typeof drillPayloadSchema>;

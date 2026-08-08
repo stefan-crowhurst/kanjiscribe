@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseIdParam, safeJsonParse } from './http.js';
+import { parseIdParam } from './http.js';
 
 describe('parseIdParam', () => {
   it('returns the id for a valid numeric string', () => {
@@ -18,19 +18,5 @@ describe('parseIdParam', () => {
 
   it('returns null for a non-numeric id', () => {
     expect(parseIdParam({ id: 'abc' })).toBeNull();
-  });
-});
-
-describe('safeJsonParse', () => {
-  it('returns an empty array for null', () => {
-    expect(safeJsonParse<string[]>(null)).toEqual([]);
-  });
-
-  it('returns an empty array for invalid JSON', () => {
-    expect(safeJsonParse<string[]>('not json')).toEqual([]);
-  });
-
-  it('parses valid JSON', () => {
-    expect(safeJsonParse<string[]>('["surface","読み"]')).toEqual(['surface', '読み']);
   });
 });

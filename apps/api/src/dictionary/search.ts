@@ -2,7 +2,7 @@ import type { DictionaryMatchType, DictionarySearchResult } from '@kanjiscribe/s
 
 import { todayIsoDate } from '../config.js';
 import { sqlite } from '../db/client.js';
-import { safeJsonParse } from '../http.js';
+import { safeJsonParse } from '../util.js';
 
 const MATCH_PRIORITY: Record<DictionaryMatchType, number> = {
   exact_spelling: 0,

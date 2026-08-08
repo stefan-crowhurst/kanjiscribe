@@ -6,6 +6,7 @@ import { z } from 'zod';
  * `/estimates/backlog-day`).
  */
 export const estimatesResponseSchema = z.object({
+  // Fractional ms possible: legacy NULL-snapshot rows fall back to a live estimateAssignment (per-stroke coefficient math), unrounded.
   estimated_remaining_ms: z.number()
 });
 

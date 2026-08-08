@@ -11,7 +11,7 @@ import {
 import type { FastifyInstance, FastifyReply } from 'fastify';
 
 import { sqlite } from '../db/client.js';
-import { badRequest, conflict, notFound, parseIdParam, parseOr400, rejectIfArchived } from '../http.js';
+import { badRequest, conflict, notFound, parseIdParam, parseOr400 } from '../http.js';
 import { assignmentDetail } from './detail.js';
 import {
   archiveAssignment,
@@ -21,7 +21,15 @@ import {
   unarchiveAssignment,
   type AssignmentLifecycleResult
 } from './lifecycle.js';
-import { computeQueue, listAssignments } from './queries.js';
+import { assignmentStatusById, computeQueue, listAssignments } from './queries.js';
+
+function rejectIfArchived(id: number, reply: FastifyReply): boolean {
+  if (assignmentStatusById(id) === 'archived') {
+    conflict(reply, 'Assignment is archived');
+    return true;
+  }
+  return false;
+}
 
 function sendLifecycleResult(
   reply: FastifyReply,
@@ -86,12 +94,17 @@ export function registerAssignmentsRoutes(app: FastifyInstance): void {
       return badRequest(reply, 'Invalid assignment id');
     }
 
-    const sourceParsed = queueSourceSchema.safeParse((request.query as { queue_source?: unknown }).queue_source);
-    if (!sourceParsed.success) {
-      return badRequest(reply, 'Invalid queue source');
+    const queueSource = parseOr400(
+      queueSourceSchema,
+      (request.query as { queue_source?: unknown }).queue_source,
+      reply,
+      'Invalid queue source'
+    );
+    if (queueSource === null) {
+      return;
     }
 
-    if (await rejectIfArchived(id, reply)) {
+    if (rejectIfArchived(id, reply)) {
       return;
     }
 
@@ -100,7 +113,7 @@ export function registerAssignmentsRoutes(app: FastifyInstance): void {
       return notFound(reply, detail.message);
     }
 
-    const queue = computeQueue(id, sourceParsed.data);
+    const queue = computeQueue(id, queueSource);
 
     const dayTotalRow = sqlite
       .prepare(
@@ -125,7 +138,7 @@ export function registerAssignmentsRoutes(app: FastifyInstance): void {
       return badRequest(reply, 'Invalid assignment id');
     }
 
-    if (await rejectIfArchived(id, reply)) {
+    if (rejectIfArchived(id, reply)) {
       return;
     }
 

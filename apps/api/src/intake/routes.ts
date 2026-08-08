@@ -25,6 +25,32 @@ type IntakeConflict = {
 };
 type IntakeTransactionResult = IntakeSuccess | IntakeConflict;
 
+function intakeSuccessBody(
+  studyItem: {
+    id: number;
+    surface_form: string;
+    selected_reading: string;
+    dictionary_entry_id: number;
+    source_type: SourceType;
+    created_at: string;
+  },
+  assignment: IntakeResponse['assignment'],
+  isNew: boolean
+): IntakeResponse {
+  return {
+    study_item: {
+      id: studyItem.id,
+      surface_form: studyItem.surface_form,
+      selected_reading: studyItem.selected_reading,
+      dictionary_entry_id: studyItem.dictionary_entry_id,
+      source_type: studyItem.source_type,
+      created_at: studyItem.created_at,
+      is_new: isNew
+    },
+    assignment
+  };
+}
+
 function isKanjiChar(char: string): boolean {
   const codePoint = char.codePointAt(0);
   if (!codePoint) {
@@ -188,18 +214,7 @@ export function registerIntakeRoutes(app: FastifyInstance): void {
 
           return {
             status: 200,
-            body: {
-              study_item: {
-                id: studyItem.id,
-                surface_form: studyItem.surface_form,
-                selected_reading: studyItem.selected_reading,
-                dictionary_entry_id: studyItem.dictionary_entry_id,
-                source_type: studyItem.source_type,
-                created_at: studyItem.created_at,
-                is_new: isNew
-              },
-              assignment
-            }
+            body: intakeSuccessBody(studyItem, assignment, isNew)
           };
         }
 
@@ -262,18 +277,7 @@ export function registerIntakeRoutes(app: FastifyInstance): void {
 
       return {
         status: 201,
-        body: {
-          study_item: {
-            id: studyItem.id,
-            surface_form: studyItem.surface_form,
-            selected_reading: studyItem.selected_reading,
-            dictionary_entry_id: studyItem.dictionary_entry_id,
-            source_type: studyItem.source_type,
-            created_at: studyItem.created_at,
-            is_new: isNew
-          },
-          assignment
-        }
+        body: intakeSuccessBody(studyItem, assignment, isNew)
       };
     });
 

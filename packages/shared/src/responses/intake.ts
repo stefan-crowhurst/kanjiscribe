@@ -17,17 +17,17 @@ import {
  */
 export const intakeResponseSchema = z.object({
   study_item: z.object({
-    id: z.number(),
+    id: z.number().int().positive(),
     surface_form: z.string(),
     selected_reading: z.string(),
-    dictionary_entry_id: z.number(),
+    dictionary_entry_id: z.number().int().positive(),
     source_type: sourceTypeSchema,
     created_at: timestampSchema,
     is_new: z.boolean()
   }),
   assignment: z.object({
-    id: z.number(),
-    study_item_id: z.number(),
+    id: z.number().int().positive(),
+    study_item_id: z.number().int().positive(),
     assigned_for_date: dateSchema,
     status: assignmentStatusSchema,
     origin: assignmentOriginSchema,

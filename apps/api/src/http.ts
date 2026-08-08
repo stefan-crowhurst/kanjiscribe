@@ -1,16 +1,6 @@
 import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
 
-import { assignmentStatusById } from './assignments/queries.js';
-
-export async function rejectIfArchived(id: number, reply: FastifyReply): Promise<boolean> {
-  if (assignmentStatusById(id) === 'archived') {
-    conflict(reply, 'Assignment is archived');
-    return true;
-  }
-  return false;
-}
-
 export function badRequest(reply: FastifyReply, message: string): FastifyReply {
   return reply.status(400).send({ error: message });
 }
@@ -35,17 +25,6 @@ export function parseOr400<TSchema extends z.ZodTypeAny>(
     return null;
   }
   return parsed.data;
-}
-
-export function safeJsonParse<T>(value: string | null): T {
-  if (!value) {
-    return [] as T;
-  }
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return [] as T;
-  }
 }
 
 export function parseIdParam(params: unknown): number | null {

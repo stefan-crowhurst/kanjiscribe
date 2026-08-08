@@ -12,14 +12,14 @@ import { assignmentStatusSchema, dateSchema, timestampSchema } from '../schemas.
  */
 export const heatmapDaySchema = z.object({
   date: dateSchema,
-  total_assignments: z.number(),
-  completed_count: z.number(),
-  pending_count: z.number(),
-  skipped_count: z.number(),
-  total_time_ms: z.number(),
+  total_assignments: z.number().int().min(0),
+  completed_count: z.number().int().min(0),
+  pending_count: z.number().int().min(0),
+  skipped_count: z.number().int().min(0),
+  total_time_ms: z.number().int().min(0),
   is_fully_completed: z.boolean(),
-  estimate_delta_ms: z.number().nullable(),
-  estimated_total_ms: z.number().nullable()
+  estimate_delta_ms: z.number().int().nullable(),
+  estimated_total_ms: z.number().int().min(0).nullable()
 });
 
 export type HeatmapDay = z.infer<typeof heatmapDaySchema>;
@@ -30,21 +30,21 @@ export type HeatmapDay = z.infer<typeof heatmapDaySchema>;
  */
 export const dashboardResponseSchema = z.object({
   today: z.object({
-    total: z.number(),
-    pending: z.number(),
-    completed: z.number(),
-    total_time_ms: z.number(),
-    avg_time_per_assignment_ms: z.number()
+    total: z.number().int().min(0),
+    pending: z.number().int().min(0),
+    completed: z.number().int().min(0),
+    total_time_ms: z.number().int().min(0),
+    avg_time_per_assignment_ms: z.number().int().min(0)
   }),
   overdue: z.object({
-    total_pending: z.number(),
+    total_pending: z.number().int().min(0),
     oldest_date: dateSchema.nullable(),
-    incomplete_days: z.number()
+    incomplete_days: z.number().int().min(0)
   }),
   totals: z.object({
-    total_time_ms: z.number(),
-    total_completed: z.number(),
-    avg_time_per_assignment_ms: z.number()
+    total_time_ms: z.number().int().min(0),
+    total_completed: z.number().int().min(0),
+    avg_time_per_assignment_ms: z.number().int().min(0)
   }),
   heatmap: z.array(heatmapDaySchema)
 });
@@ -57,24 +57,24 @@ export type DashboardResponse = z.infer<typeof dashboardResponseSchema>;
  */
 export const studyItemStatsResponseSchema = z.object({
   study_item: z.object({
-    id: z.number(),
+    id: z.number().int().positive(),
     surface_form: z.string(),
     selected_reading: z.string()
   }),
   stats: z.object({
-    total_assignments: z.number(),
-    times_completed: z.number(),
-    total_time_ms: z.number(),
-    avg_completion_time_ms: z.number(),
+    total_assignments: z.number().int().min(0),
+    times_completed: z.number().int().min(0),
+    total_time_ms: z.number().int().min(0),
+    avg_completion_time_ms: z.number().int().min(0),
     first_assigned: dateSchema.nullable(),
     last_assigned: dateSchema.nullable()
   }),
   recent_assignments: z.array(
     z.object({
-      id: z.number(),
+      id: z.number().int().positive(),
       assigned_for_date: dateSchema,
       status: assignmentStatusSchema,
-      time_spent_ms: z.number().nullable(),
+      time_spent_ms: z.number().int().min(0).nullable(),
       completed_at: timestampSchema.nullable()
     })
   )
@@ -92,20 +92,20 @@ export const kanjiStatsResponseSchema = z.object({
     meanings: z.array(z.string()),
     onyomi: z.array(z.string()),
     kunyomi: z.array(z.string()),
-    stroke_count: z.number(),
-    grade: z.number().nullable(),
-    jlpt_level: z.number().nullable(),
-    frequency_rank: z.number().nullable(),
+    stroke_count: z.number().int().min(0),
+    grade: z.number().int().positive().nullable(),
+    jlpt_level: z.number().int().positive().nullable(),
+    frequency_rank: z.number().int().positive().nullable(),
     stroke_asset_url: z.string().nullable()
   }),
   stats: z.object({
-    word_count: z.number(),
-    total_assignments: z.number(),
-    times_drilled: z.number()
+    word_count: z.number().int().min(0),
+    total_assignments: z.number().int().min(0),
+    times_drilled: z.number().int().min(0)
   }),
   study_items: z.array(
     z.object({
-      id: z.number(),
+      id: z.number().int().positive(),
       surface_form: z.string(),
       selected_reading: z.string()
     })
@@ -115,12 +115,12 @@ export const kanjiStatsResponseSchema = z.object({
 export type KanjiStatsResponse = z.infer<typeof kanjiStatsResponseSchema>;
 
 const wordRankingSchema = z.object({
-  study_item_id: z.number(),
+  study_item_id: z.number().int().positive(),
   surface_form: z.string(),
   selected_reading: z.string(),
-  times_completed: z.number(),
-  total_time_ms: z.number(),
-  avg_completion_time_ms: z.number()
+  times_completed: z.number().int().min(0),
+  total_time_ms: z.number().int().min(0),
+  avg_completion_time_ms: z.number().int().min(0)
 });
 
 /**
@@ -144,13 +144,13 @@ export const topKanjiResponseSchema = z.object({
   kanji: z.array(
     z.object({
       literal: z.string(),
-      word_count: z.number(),
-      total_assignments: z.number(),
-      times_drilled: z.number(),
+      word_count: z.number().int().min(0),
+      total_assignments: z.number().int().min(0),
+      times_drilled: z.number().int().min(0),
       onyomi: z.array(z.string()),
       kunyomi: z.array(z.string()),
-      stroke_count: z.number(),
-      grade: z.number().nullable()
+      stroke_count: z.number().int().min(0),
+      grade: z.number().int().positive().nullable()
     })
   )
 });

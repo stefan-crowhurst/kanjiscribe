@@ -1,7 +1,7 @@
 import type { DictionaryEntryDetail } from '@kanjiscribe/shared';
 
 import { sqlite } from '../db/client.js';
-import { safeJsonParse } from '../http.js';
+import { safeJsonParse } from '../util.js';
 
 export function getEntryDetails(entryId: number): DictionaryEntryDetail | null {
   const entry = sqlite

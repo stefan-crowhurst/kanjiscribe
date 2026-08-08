@@ -2,7 +2,7 @@ import type { AssignmentOrigin, AssignmentStatus, ViewPayload } from '@kanjiscri
 import type { Database } from 'better-sqlite3';
 
 import { getEntryDetails } from '../dictionary/entries.js';
-import { safeJsonParse } from '../http.js';
+import { safeJsonParse } from '../util.js';
 
 export type AssignmentDetailResult =
   | { kind: 'ok'; payload: ViewPayload }
