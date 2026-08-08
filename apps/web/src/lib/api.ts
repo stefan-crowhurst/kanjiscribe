@@ -51,7 +51,7 @@ export function apiAssetUrl(path: string): string {
  * a response that fails the schema rejects with an error naming the endpoint,
  * never a silent pass-through.
  */
-export async function apiRequest<T extends z.ZodTypeAny>(
+async function apiRequest<T extends z.ZodTypeAny>(
   schema: T,
   path: string,
   options?: RequestInit
