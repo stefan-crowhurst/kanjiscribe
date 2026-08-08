@@ -1,17 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  assignmentListResponseSchema,
-  dashboardResponseSchema,
-  type Assignment,
-  type HeatmapDay
-} from '@kanjiscribe/shared';
+import { type Assignment, type HeatmapDay } from '@kanjiscribe/shared';
 
 import { AssignmentList } from '../components/AssignmentList.js';
 import { DeltaChip } from '../components/DeltaChip.js';
 import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
 import { useEstimate } from '../hooks/useEstimate.js';
-import { apiRequest, formatJapaneseDate, formatMsEstimate, todayDateString } from '../lib/api.js';
+import { formatJapaneseDate, formatMsEstimate, getDashboardStats, listAssignments, todayDateString } from '../lib/api.js';
 
 type DayStats = Pick<HeatmapDay, 'total_assignments' | 'completed_count' | 'pending_count'>;
 
@@ -20,13 +15,13 @@ export function TodayPage() {
   const [dayStats, setDayStats] = useState<DayStats | null>(null);
   const [dayDeltaMs, setDayDeltaMs] = useState<number | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
-  const todayEstimate = useEstimate('/estimates/today');
+  const todayEstimate = useEstimate('today');
 
   const refresh = useCallback(async () => {
     const today = todayDateString();
     const [assignmentsRes, statsRes] = await Promise.all([
-      apiRequest(assignmentListResponseSchema, `/assignments?date=${today}`),
-      apiRequest(dashboardResponseSchema, `/stats/dashboard?from=${today}&to=${today}`)
+      listAssignments({ date: today }),
+      getDashboardStats(today, today)
     ]);
     setAssignments(assignmentsRes.assignments);
     const todayStats = statsRes.heatmap.find((d) => d.date === today);

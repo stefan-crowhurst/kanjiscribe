@@ -1,13 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  dashboardResponseSchema,
-  dictionarySearchResponseSchema,
-  intakeResponseSchema,
-  type DashboardResponse,
-  type DictionarySearchResult
-} from '@kanjiscribe/shared';
+import { type DashboardResponse, type DictionarySearchResult } from '@kanjiscribe/shared';
 
-import { apiRequest, todayDateString } from '../lib/api.js';
+import { getDashboardStats, intakeStudyItem, searchDictionary, todayDateString } from '../lib/api.js';
 
 export function IntakePage() {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -28,7 +22,7 @@ export function IntakePage() {
 
   async function loadIntakeStats() {
     try {
-      const dashboardStats = await apiRequest(dashboardResponseSchema, '/stats/dashboard');
+      const dashboardStats = await getDashboardStats();
       setIntakeStats(dashboardStats);
     } catch {
       setIntakeStats(null);
@@ -61,10 +55,7 @@ export function IntakePage() {
     setIsSearching(true);
 
     try {
-      const response = await apiRequest(
-        dictionarySearchResponseSchema,
-        `/dictionary/search?q=${encodeURIComponent(query.trim())}`
-      );
+      const response = await searchDictionary(query.trim());
       setResults(response.results);
       if (response.results.length === 1) {
         const onlyResult = response.results[0];
@@ -106,15 +97,12 @@ export function IntakePage() {
 
     try {
       const surfaceForm = selectedEntry.primary_spelling ?? query.trim();
-      await apiRequest(intakeResponseSchema, '/study-items/intake', {
-        method: 'POST',
-        body: JSON.stringify({
-          surface_form: surfaceForm,
-          selected_reading: selectedReading,
-          dictionary_entry_id: selectedEntry.entry_id,
-          source_type: 'manual',
-          assigned_for_date: todayDateString()
-        })
+      await intakeStudyItem({
+        surface_form: surfaceForm,
+        selected_reading: selectedReading,
+        dictionary_entry_id: selectedEntry.entry_id,
+        source_type: 'manual',
+        assigned_for_date: todayDateString()
       });
 
       setStatus(`Added ${surfaceForm} (${selectedReading}) to today's assignments.`);

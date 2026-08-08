@@ -1,6 +1,31 @@
 import { z } from 'zod';
 
-import { assignmentSummaryResponseSchema } from '@kanjiscribe/shared';
+import {
+  assignmentListResponseSchema,
+  assignmentSummaryResponseSchema,
+  backlogResponseSchema,
+  dashboardResponseSchema,
+  dictionarySearchResponseSchema,
+  drillPayloadSchema,
+  estimatesResponseSchema,
+  intakeResponseSchema,
+  slowestWordsResponseSchema,
+  topKanjiResponseSchema,
+  topWordsResponseSchema,
+  viewPayloadSchema,
+  type AssignmentListResponse,
+  type AssignmentSummaryResponse,
+  type BacklogResponse,
+  type DashboardResponse,
+  type DictionarySearchResponse,
+  type DrillPayload,
+  type IntakeRequest,
+  type IntakeResponse,
+  type SlowestWordsResponse,
+  type TopKanjiResponse,
+  type TopWordsResponse,
+  type ViewPayload
+} from '@kanjiscribe/shared';
 
 declare const __API_PORT__: string;
 
@@ -65,9 +90,104 @@ export async function apiRequest<T extends z.ZodTypeAny>(
   return parsed.data;
 }
 
+export async function listAssignments(params: { date?: string; status?: string } = {}): Promise<AssignmentListResponse> {
+  const query = new URLSearchParams();
+  if (params.date) {
+    query.set('date', params.date);
+  }
+  if (params.status) {
+    query.set('status', params.status);
+  }
+  const queryString = query.toString();
+  return apiRequest(assignmentListResponseSchema, `/assignments${queryString ? `?${queryString}` : ''}`);
+}
+
+export async function getBacklog(): Promise<BacklogResponse> {
+  return apiRequest(backlogResponseSchema, '/assignments/backlog');
+}
+
+export async function getDrillPayload(assignmentId: number, queueSource?: string): Promise<DrillPayload> {
+  const query = queueSource ? `?queue_source=${encodeURIComponent(queueSource)}` : '';
+  return apiRequest(drillPayloadSchema, `/assignments/${assignmentId}/drill${query}`);
+}
+
+export async function getViewPayload(assignmentId: number): Promise<ViewPayload> {
+  return apiRequest(viewPayloadSchema, `/assignments/${assignmentId}/view`);
+}
+
+export async function completeAssignment(id: number, timeSpentMs: number): Promise<AssignmentSummaryResponse> {
+  return apiRequest(assignmentSummaryResponseSchema, `/assignments/${id}/complete`, {
+    method: 'POST',
+    body: JSON.stringify({ time_spent_ms: timeSpentMs })
+  });
+}
+
+export async function skipAssignment(id: number, timeSpentMs: number): Promise<AssignmentSummaryResponse> {
+  return apiRequest(assignmentSummaryResponseSchema, `/assignments/${id}/skip`, {
+    method: 'POST',
+    body: JSON.stringify({ time_spent_ms: timeSpentMs })
+  });
+}
+
+export async function reopenAssignment(id: number): Promise<AssignmentSummaryResponse> {
+  return apiRequest(assignmentSummaryResponseSchema, `/assignments/${id}/reopen`, {
+    method: 'POST'
+  });
+}
+
 export async function archiveAssignment(id: number): Promise<void> {
   await apiRequest(assignmentSummaryResponseSchema, `/assignments/${id}/archive`, {
     method: 'POST'
+  });
+}
+
+export async function getDashboardStats(from?: string, to?: string): Promise<DashboardResponse> {
+  const query = new URLSearchParams();
+  if (from) {
+    query.set('from', from);
+  }
+  if (to) {
+    query.set('to', to);
+  }
+  const queryString = query.toString();
+  return apiRequest(dashboardResponseSchema, `/stats/dashboard${queryString ? `?${queryString}` : ''}`);
+}
+
+export async function getTopWords(): Promise<TopWordsResponse> {
+  return apiRequest(topWordsResponseSchema, '/stats/top-words');
+}
+
+export async function getSlowestWords(): Promise<SlowestWordsResponse> {
+  return apiRequest(slowestWordsResponseSchema, '/stats/slowest-words');
+}
+
+export async function getTopKanji(): Promise<TopKanjiResponse> {
+  return apiRequest(topKanjiResponseSchema, '/stats/top-kanji');
+}
+
+export async function getTodayEstimate(): Promise<number> {
+  const response = await apiRequest(estimatesResponseSchema, '/estimates/today');
+  return response.estimated_remaining_ms;
+}
+
+export async function getBacklogDaysEstimate(): Promise<number> {
+  const response = await apiRequest(estimatesResponseSchema, '/estimates/backlog-days');
+  return response.estimated_remaining_ms;
+}
+
+export async function getBacklogDayEstimate(date: string): Promise<number> {
+  const response = await apiRequest(estimatesResponseSchema, `/estimates/backlog-day?date=${date}`);
+  return response.estimated_remaining_ms;
+}
+
+export async function searchDictionary(query: string): Promise<DictionarySearchResponse> {
+  return apiRequest(dictionarySearchResponseSchema, `/dictionary/search?q=${encodeURIComponent(query)}`);
+}
+
+export async function intakeStudyItem(payload: IntakeRequest): Promise<IntakeResponse> {
+  return apiRequest(intakeResponseSchema, '/study-items/intake', {
+    method: 'POST',
+    body: JSON.stringify(payload)
   });
 }
 

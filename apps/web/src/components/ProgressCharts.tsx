@@ -10,9 +10,9 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
-import { dashboardResponseSchema, type DashboardResponse } from '@kanjiscribe/shared';
+import { type DashboardResponse } from '@kanjiscribe/shared';
 
-import { apiRequest, formatMs, formatShortDate } from '../lib/api.js';
+import { formatMs, formatShortDate, getDashboardStats } from '../lib/api.js';
 
 type TimeInterval = 7 | 14 | 30;
 
@@ -182,7 +182,7 @@ export function ProgressCharts() {
   }, [pageOffset, intervalDays]);
 
   useEffect(() => {
-    apiRequest(dashboardResponseSchema, `/stats/dashboard?from=${range.from}&to=${range.to}`)
+    getDashboardStats(range.from, range.to)
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load charts'));
   }, [range.from, range.to]);

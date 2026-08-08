@@ -1,10 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  dashboardResponseSchema,
-  slowestWordsResponseSchema,
-  topKanjiResponseSchema,
-  topWordsResponseSchema,
   type DashboardResponse,
   type SlowestWordsResponse,
   type TopKanjiResponse,
@@ -16,7 +12,16 @@ import { Heatmap } from '../components/Heatmap.js';
 import { ProgressCharts } from '../components/ProgressCharts.js';
 import { KanjiIcon } from '../components/KanjiIcon.js';
 import { useEstimate } from '../hooks/useEstimate.js';
-import { apiRequest, formatMs, formatMsEstimate, formatShortDate, todayDateString } from '../lib/api.js';
+import {
+  formatMs,
+  formatMsEstimate,
+  formatShortDate,
+  getDashboardStats,
+  getSlowestWords,
+  getTopKanji,
+  getTopWords,
+  todayDateString
+} from '../lib/api.js';
 
 export function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
@@ -25,8 +30,8 @@ export function DashboardPage() {
   const [topKanji, setTopKanji] = useState<TopKanjiResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [yearOffset, setYearOffset] = useState(0);
-  const todayEstimate = useEstimate('/estimates/today');
-  const backlogEstimate = useEstimate('/estimates/backlog-days');
+  const todayEstimate = useEstimate('today');
+  const backlogEstimate = useEstimate('backlog-days');
 
   const range = useMemo(() => {
     const toDate = new Date();
@@ -42,17 +47,13 @@ export function DashboardPage() {
   }, [yearOffset]);
 
   useEffect(() => {
-    apiRequest(dashboardResponseSchema, `/stats/dashboard?from=${range.from}&to=${range.to}`)
+    getDashboardStats(range.from, range.to)
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load dashboard'));
   }, [range.from, range.to]);
 
   useEffect(() => {
-    Promise.all([
-      apiRequest(topWordsResponseSchema, '/stats/top-words'),
-      apiRequest(slowestWordsResponseSchema, '/stats/slowest-words'),
-      apiRequest(topKanjiResponseSchema, '/stats/top-kanji')
-    ])
+    Promise.all([getTopWords(), getSlowestWords(), getTopKanji()])
       .then(([top, slowest, kanji]) => {
         setTopWords(top);
         setSlowestWords(slowest);

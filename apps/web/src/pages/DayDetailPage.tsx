@@ -1,16 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import {
-  assignmentListResponseSchema,
-  dashboardResponseSchema,
-  type Assignment,
-  type HeatmapDay
-} from '@kanjiscribe/shared';
+import { type Assignment, type HeatmapDay } from '@kanjiscribe/shared';
 
 import { DeltaChip } from '../components/DeltaChip.js';
 import { RemoveButton } from '../components/RemoveButton.js';
 import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
-import { apiRequest, formatMs } from '../lib/api.js';
+import { formatMs, getDashboardStats, listAssignments } from '../lib/api.js';
 
 export function DayDetailPage() {
   const { date } = useParams();
@@ -24,8 +19,8 @@ export function DayDetailPage() {
     }
 
     const [assignmentsRes, statsRes] = await Promise.all([
-      apiRequest(assignmentListResponseSchema, `/assignments?date=${date}`),
-      apiRequest(dashboardResponseSchema, `/stats/dashboard?from=${date}&to=${date}`)
+      listAssignments({ date }),
+      getDashboardStats(date, date)
     ]);
     setAssignments(assignmentsRes.assignments);
     const summary = statsRes.heatmap.find((d) => d.date === date);
@@ -178,7 +173,7 @@ function DayAssignmentCard({
     ? `/word/${assignment.id}?day=${dayDate}&ids=${allIds.join(',')}`
     : `/word/${assignment.id}?day=${dayDate}`;
   const drillUrl = `/drill/${assignment.id}?queue_source=today`;
-  const cardUrl = isPending ? drillUrl : viewUrl;
+  const cardUrl = isCompleted ? viewUrl : drillUrl;
 
   const removeButton =
     onRemove && isRemovable ? <RemoveButton onConfirm={() => onRemove(assignment)} /> : null;

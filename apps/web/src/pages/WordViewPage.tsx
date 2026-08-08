@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { viewPayloadSchema, type ViewPayload } from '@kanjiscribe/shared';
+import { type ViewPayload } from '@kanjiscribe/shared';
 
-import { apiAssetUrl, apiRequest, formatMs } from '../lib/api.js';
+import { apiAssetUrl, formatMs, getViewPayload } from '../lib/api.js';
 
 export function WordViewPage() {
   const { assignmentId } = useParams();
@@ -32,7 +32,7 @@ export function WordViewPage() {
 
     setError(null);
 
-    apiRequest(viewPayloadSchema, `/assignments/${assignmentId}/view`)
+    getViewPayload(Number(assignmentId))
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load word details'));
   }, [assignmentId]);

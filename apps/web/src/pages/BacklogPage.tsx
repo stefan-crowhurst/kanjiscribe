@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { backlogResponseSchema, type Assignment, type BacklogResponse } from '@kanjiscribe/shared';
+import { type Assignment, type BacklogResponse } from '@kanjiscribe/shared';
 
 import { AssignmentList } from '../components/AssignmentList.js';
 import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
 import { useBacklogDayEstimates } from '../hooks/useEstimate.js';
-import { apiRequest, formatJapaneseDate, formatMsEstimate } from '../lib/api.js';
+import { formatJapaneseDate, formatMsEstimate, getBacklog } from '../lib/api.js';
 
 export function BacklogPage() {
   const [data, setData] = useState<BacklogResponse | null>(null);
@@ -13,7 +13,7 @@ export function BacklogPage() {
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
 
   const refresh = useCallback(async () => {
-    const refreshed = await apiRequest(backlogResponseSchema, '/assignments/backlog');
+    const refreshed = await getBacklog();
     setData(refreshed);
   }, []);
 
