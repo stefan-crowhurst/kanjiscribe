@@ -3,12 +3,19 @@ import { z } from 'zod';
 import {
   assignmentListResponseSchema,
   assignmentSummaryResponseSchema,
+  assignmentsQuerySchema,
   backlogResponseSchema,
+  dashboardQuerySchema,
   dashboardResponseSchema,
+  dateSchema,
   dictionarySearchResponseSchema,
   drillPayloadSchema,
+  envConfigSchema,
+  errorResponseSchema,
   estimatesResponseSchema,
+  intakeRequestSchema,
   intakeResponseSchema,
+  queueSourceSchema,
   slowestWordsResponseSchema,
   topKanjiResponseSchema,
   topWordsResponseSchema,
@@ -29,21 +36,42 @@ import {
 
 declare const __API_PORT__: string;
 
-function getDefaultApiBase(): string {
-  const apiPort = __API_PORT__;
+function getDefaultApiBase(apiPort: number): string {
   if (typeof window === 'undefined') {
     return `http://localhost:${apiPort}`;
   }
   return `${window.location.protocol}//${window.location.hostname}:${apiPort}`;
 }
 
-export const API_BASE = import.meta.env.VITE_API_BASE ?? getDefaultApiBase();
+// Parse the build-time API-base/port configuration through the shared env
+// schema at module load (ADR-0006): misconfigured env fails loudly instead
+// of producing a broken base URL.
+const envConfig = envConfigSchema.parse({
+  KANJISCRIBE_API_PORT: __API_PORT__,
+  VITE_API_BASE: import.meta.env.VITE_API_BASE
+});
+
+export const API_BASE = envConfig.VITE_API_BASE ?? getDefaultApiBase(envConfig.KANJISCRIBE_API_PORT);
 
 export function apiAssetUrl(path: string): string {
   if (path.startsWith('http://') || path.startsWith('https://')) {
     return path;
   }
   return `${API_BASE}${path}`;
+}
+
+/**
+ * Validate a request input against the same shared schema the api enforces
+ * at its HTTP seam (ADR-0006): an invalid input rejects here, before any URL
+ * or body is built and before any request is sent. Valid inputs are returned
+ * as the schema's typed output.
+ */
+function validateRequestInput<TSchema extends z.ZodTypeAny>(schema: TSchema, value: unknown): z.infer<TSchema> {
+  const parsed = schema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? 'Invalid request input');
+  }
+  return parsed.data;
 }
 
 /**
@@ -78,8 +106,10 @@ async function apiRequest<T extends z.ZodTypeAny>(
   });
 
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(body?.error ?? `Request failed (${response.status})`);
+    const body: unknown = await response.json().catch(() => null);
+    const parsed = errorResponseSchema.safeParse(body);
+    const message = parsed.success ? parsed.data.error : undefined;
+    throw new Error(message ?? `Request failed (${response.status})`);
   }
 
   const data: unknown = await response.json();
@@ -90,13 +120,16 @@ async function apiRequest<T extends z.ZodTypeAny>(
   return parsed.data;
 }
 
-export async function listAssignments(params: { date?: string; status?: string } = {}): Promise<AssignmentListResponse> {
+export async function listAssignments(
+  params: z.infer<typeof assignmentsQuerySchema> = {}
+): Promise<AssignmentListResponse> {
+  const { date, status } = validateRequestInput(assignmentsQuerySchema, params);
   const query = new URLSearchParams();
-  if (params.date) {
-    query.set('date', params.date);
+  if (date) {
+    query.set('date', date);
   }
-  if (params.status) {
-    query.set('status', params.status);
+  if (status) {
+    query.set('status', status);
   }
   const queryString = query.toString();
   return apiRequest(assignmentListResponseSchema, `/assignments${queryString ? `?${queryString}` : ''}`);
@@ -107,7 +140,8 @@ export async function getBacklog(): Promise<BacklogResponse> {
 }
 
 export async function getDrillPayload(assignmentId: number, queueSource?: string): Promise<DrillPayload> {
-  const query = queueSource ? `?queue_source=${encodeURIComponent(queueSource)}` : '';
+  const source = validateRequestInput(queueSourceSchema, queueSource);
+  const query = source ? `?queue_source=${encodeURIComponent(source)}` : '';
   return apiRequest(drillPayloadSchema, `/assignments/${assignmentId}/drill${query}`);
 }
 
@@ -142,12 +176,13 @@ export async function archiveAssignment(id: number): Promise<void> {
 }
 
 export async function getDashboardStats(from?: string, to?: string): Promise<DashboardResponse> {
+  const { from: fromDate, to: toDate } = validateRequestInput(dashboardQuerySchema, { from, to });
   const query = new URLSearchParams();
-  if (from) {
-    query.set('from', from);
+  if (fromDate) {
+    query.set('from', fromDate);
   }
-  if (to) {
-    query.set('to', to);
+  if (toDate) {
+    query.set('to', toDate);
   }
   const queryString = query.toString();
   return apiRequest(dashboardResponseSchema, `/stats/dashboard${queryString ? `?${queryString}` : ''}`);
@@ -176,7 +211,8 @@ export async function getBacklogDaysEstimate(): Promise<number> {
 }
 
 export async function getBacklogDayEstimate(date: string): Promise<number> {
-  const response = await apiRequest(estimatesResponseSchema, `/estimates/backlog-day?date=${date}`);
+  const validatedDate = validateRequestInput(dateSchema, date);
+  const response = await apiRequest(estimatesResponseSchema, `/estimates/backlog-day?date=${validatedDate}`);
   return response.estimated_remaining_ms;
 }
 
@@ -185,9 +221,10 @@ export async function searchDictionary(query: string): Promise<DictionarySearchR
 }
 
 export async function intakeStudyItem(payload: IntakeRequest): Promise<IntakeResponse> {
+  const validatedPayload = validateRequestInput(intakeRequestSchema, payload);
   return apiRequest(intakeResponseSchema, '/study-items/intake', {
     method: 'POST',
-    body: JSON.stringify(payload)
+    body: JSON.stringify(validatedPayload)
   });
 }
 
@@ -207,7 +244,9 @@ export function formatMsEstimate(ms: number): string {
 }
 
 export function todayDateString(): string {
-  return new Date().toISOString().slice(0, 10);
+  // The output is asserted through the shared date schema so every date the
+  // web sends matches the server contract (ADR-0006).
+  return dateSchema.parse(new Date().toISOString().slice(0, 10));
 }
 
 export function formatShortDate(value: string): string {

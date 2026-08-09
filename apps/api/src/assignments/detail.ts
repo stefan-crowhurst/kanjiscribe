@@ -1,8 +1,7 @@
-import type { AssignmentOrigin, AssignmentStatus, ViewPayload } from '@kanjiscribe/shared';
+import { stringArraySchema, type AssignmentOrigin, type AssignmentStatus, type ViewPayload } from '@kanjiscribe/shared';
 import type { Database } from 'better-sqlite3';
 
 import { getEntryDetails } from '../dictionary/entries.js';
-import { safeJsonParse } from '../util.js';
 
 export type AssignmentDetailResult =
   | { kind: 'ok'; payload: ViewPayload }
@@ -119,9 +118,9 @@ export function assignmentDetail(db: Database, id: number): AssignmentDetailResu
       kanji: kanjiRows.map((item) => ({
         literal: item.literal,
         position: item.position,
-        meanings: safeJsonParse<string[]>(item.meanings_json),
-        onyomi: safeJsonParse<string[]>(item.onyomi_json),
-        kunyomi: safeJsonParse<string[]>(item.kunyomi_json),
+        meanings: stringArraySchema.parse(item.meanings_json),
+        onyomi: stringArraySchema.parse(item.onyomi_json),
+        kunyomi: stringArraySchema.parse(item.kunyomi_json),
         stroke_count: item.stroke_count,
         grade: item.grade,
         jlpt_level: item.jlpt_level,

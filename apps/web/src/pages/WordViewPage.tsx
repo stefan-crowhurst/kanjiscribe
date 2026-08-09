@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { type ViewPayload } from '@kanjiscribe/shared';
+import { pathIdSchema, wordViewQuerySchema, type ViewPayload } from '@kanjiscribe/shared';
 
 import { LoadingState } from '../components/LoadingState.js';
 import { apiAssetUrl, formatMs, getViewPayload } from '../lib/api.js';
@@ -8,27 +8,43 @@ import { apiAssetUrl, formatMs, getViewPayload } from '../lib/api.js';
 export function WordViewPage() {
   const { assignmentId } = useParams();
   const [params] = useSearchParams();
-  const dayDate = params.get('day');
   const [data, setData] = useState<ViewPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fetchIdRef = useRef(0);
 
-  const idsParam = params.get('ids');
-  const ids = useMemo(() => {
-    if (!idsParam) return [];
-    return idsParam.split(',').map(Number).filter(id => id > 0);
-  }, [idsParam]);
-  
+  // URL params parse through the shared schemas (ADR-0006): junk `day` and
+  // `ids` entries degrade to absent/dropped before any link is built.
+  const queryParse = useMemo(
+    () =>
+      wordViewQuerySchema.safeParse({
+        day: params.get('day') ?? undefined,
+        ids: params.get('ids') ?? undefined
+      }),
+    [params]
+  );
+  const dayDate = queryParse.success ? queryParse.data.day : undefined;
+  const ids = queryParse.success ? queryParse.data.ids ?? [] : [];
+
+  // Route id through the shared path-id schema: junk ids are caught by the
+  // fetch effect below (error state, no request).
+  const assignmentIdParse = useMemo(() => pathIdSchema.safeParse(assignmentId), [assignmentId]);
+  const parsedAssignmentId = assignmentIdParse.success ? assignmentIdParse.data : null;
+
   const currentIndex = useMemo(() => {
-    if (!assignmentId || ids.length === 0) return -1;
-    return ids.findIndex(id => id === Number(assignmentId));
-  }, [assignmentId, ids]);
+    if (parsedAssignmentId === null || ids.length === 0) return -1;
+    return ids.findIndex(id => id === parsedAssignmentId);
+  }, [parsedAssignmentId, ids]);
 
   const prevId = currentIndex > 0 ? ids[currentIndex - 1] : null;
   const nextId = currentIndex >= 0 && currentIndex < ids.length - 1 ? ids[currentIndex + 1] : null;
 
   useEffect(() => {
-    if (!assignmentId) {
+    if (!assignmentIdParse.success) {
+      // A malformed route id never reaches the api: surface the same 400
+      // message the view route would return through the existing error
+      // state, without a request (no hang, no double-load).
+      setError('Invalid assignment id');
+      setData(null);
       return;
     }
 
@@ -36,7 +52,7 @@ export function WordViewPage() {
     setError(null);
     setData(null);
 
-    getViewPayload(Number(assignmentId))
+    getViewPayload(assignmentIdParse.data)
       .then((payload) => {
         if (fetchId === fetchIdRef.current) {
           setData(payload);
@@ -47,7 +63,7 @@ export function WordViewPage() {
           setError(err instanceof Error ? err.message : 'Failed to load word details');
         }
       });
-  }, [assignmentId]);
+  }, [assignmentIdParse]);
 
   const gloss = useMemo(() => data?.dictionary_entry.senses[0]?.glosses?.join('; ') ?? '-', [data]);
 

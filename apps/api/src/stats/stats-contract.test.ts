@@ -194,3 +194,50 @@ describe('stats response contract — api bytes parse through the shared schemas
     expect(top.kanji[0]).toMatchObject({ literal: '永', word_count: 2, times_drilled: 2 });
   });
 });
+
+describe('dashboard from/to query validation', () => {
+  beforeEach(() => {
+    resetDb();
+    resetCounters();
+  });
+
+  it('returns 400 with the date-format message for a malformed from', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/stats/dashboard?from=2024-1-01'
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: 'Invalid date' });
+  });
+
+  it('returns 400 with the date-format message for a malformed to', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/stats/dashboard?from=2024-01-01&to=tomorrow'
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: 'Invalid date' });
+  });
+
+  it('keeps the 365-days-back-to-today defaults when from/to are absent', async () => {
+    const item = seedStudyItem(sqlite, 1);
+    const today = new Date().toISOString().slice(0, 10);
+    // The route's default from-date expression, mirrored for the expected window.
+    const fromDate = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const outsideDate = new Date(Date.now() - 366 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    seedAssignment({ study_item_id: item, assigned_for_date: today, status: 'completed', time_spent_ms: 1000 });
+    seedAssignment({ study_item_id: item, assigned_for_date: fromDate, status: 'completed', time_spent_ms: 1000 });
+    seedAssignment({ study_item_id: item, assigned_for_date: outsideDate, status: 'completed', time_spent_ms: 1000 });
+
+    const res = await app.inject({ method: 'GET', url: '/stats/dashboard' });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as { heatmap: Array<{ date: string }> };
+    const heatmapDates = body.heatmap.map((d) => d.date);
+    expect(heatmapDates).toContain(fromDate);
+    expect(heatmapDates).toContain(today);
+    expect(heatmapDates).not.toContain(outsideDate);
+  });
+});

@@ -1,11 +1,12 @@
 import {
   dictionarySearchQuerySchema,
+  pathIdSchema,
   type DictionaryEntryDetailResponse,
   type DictionarySearchResponse
 } from '@kanjiscribe/shared';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 
-import { badRequest, notFound, parseIdParam, parseOr400 } from '../http.js';
+import { notFound, parseOr400 } from '../http.js';
 import { getEntryDetails } from './entries.js';
 import { searchDictionary } from './search.js';
 
@@ -21,9 +22,9 @@ export function registerDictionaryRoutes(app: FastifyInstance): void {
   });
 
   app.get('/dictionary/entries/:id', async (request, reply): Promise<DictionaryEntryDetailResponse | FastifyReply | undefined> => {
-    const id = parseIdParam(request.params);
+    const id = parseOr400(pathIdSchema, (request.params as { id: string }).id, reply, 'Invalid entry id');
     if (id === null) {
-      return badRequest(reply, 'Invalid entry id');
+      return;
     }
 
     const entry = getEntryDetails(id);

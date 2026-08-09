@@ -1,5 +1,6 @@
 import {
   assignmentsQuerySchema,
+  pathIdSchema,
   queueSourceSchema,
   updateAssignmentTimeSchema,
   type AssignmentListResponse,
@@ -11,7 +12,7 @@ import {
 import type { FastifyInstance, FastifyReply } from 'fastify';
 
 import { sqlite } from '../db/client.js';
-import { badRequest, conflict, notFound, parseIdParam, parseOr400 } from '../http.js';
+import { conflict, notFound, parseOr400 } from '../http.js';
 import { assignmentDetail } from './detail.js';
 import {
   archiveAssignment,
@@ -89,9 +90,9 @@ export function registerAssignmentsRoutes(app: FastifyInstance): void {
   });
 
   app.get('/assignments/:id/drill', async (request, reply): Promise<DrillPayload | FastifyReply | undefined> => {
-    const id = parseIdParam(request.params);
+    const id = parseOr400(pathIdSchema, (request.params as { id: string }).id, reply, 'Invalid assignment id');
     if (id === null) {
-      return badRequest(reply, 'Invalid assignment id');
+      return;
     }
 
     const queueSource = parseOr400(
@@ -133,9 +134,9 @@ export function registerAssignmentsRoutes(app: FastifyInstance): void {
   });
 
   app.get('/assignments/:id/view', async (request, reply): Promise<ViewPayload | FastifyReply | undefined> => {
-    const id = parseIdParam(request.params);
+    const id = parseOr400(pathIdSchema, (request.params as { id: string }).id, reply, 'Invalid assignment id');
     if (id === null) {
-      return badRequest(reply, 'Invalid assignment id');
+      return;
     }
 
     if (rejectIfArchived(id, reply)) {
@@ -151,9 +152,9 @@ export function registerAssignmentsRoutes(app: FastifyInstance): void {
   });
 
   app.post('/assignments/:id/complete', async (request, reply): Promise<AssignmentSummaryResponse | FastifyReply | undefined> => {
-    const id = parseIdParam(request.params);
+    const id = parseOr400(pathIdSchema, (request.params as { id: string }).id, reply, 'Invalid assignment id');
     if (id === null) {
-      return badRequest(reply, 'Invalid assignment id');
+      return;
     }
 
     const parsed = parseOr400(updateAssignmentTimeSchema, request.body ?? {}, reply);
@@ -165,9 +166,9 @@ export function registerAssignmentsRoutes(app: FastifyInstance): void {
   });
 
   app.post('/assignments/:id/skip', async (request, reply): Promise<AssignmentSummaryResponse | FastifyReply | undefined> => {
-    const id = parseIdParam(request.params);
+    const id = parseOr400(pathIdSchema, (request.params as { id: string }).id, reply, 'Invalid assignment id');
     if (id === null) {
-      return badRequest(reply, 'Invalid assignment id');
+      return;
     }
 
     const parsed = parseOr400(updateAssignmentTimeSchema, request.body ?? {}, reply);
@@ -178,28 +179,28 @@ export function registerAssignmentsRoutes(app: FastifyInstance): void {
     return sendLifecycleResult(reply, skipAssignment(sqlite, id, parsed.time_spent_ms));
   });
 
-  app.post('/assignments/:id/reopen', async (request, reply): Promise<AssignmentSummaryResponse | FastifyReply> => {
-    const id = parseIdParam(request.params);
+  app.post('/assignments/:id/reopen', async (request, reply): Promise<AssignmentSummaryResponse | FastifyReply | undefined> => {
+    const id = parseOr400(pathIdSchema, (request.params as { id: string }).id, reply, 'Invalid assignment id');
     if (id === null) {
-      return badRequest(reply, 'Invalid assignment id');
+      return;
     }
 
     return sendLifecycleResult(reply, reopenAssignment(sqlite, id));
   });
 
-  app.post('/assignments/:id/archive', async (request, reply): Promise<AssignmentSummaryResponse | FastifyReply> => {
-    const id = parseIdParam(request.params);
+  app.post('/assignments/:id/archive', async (request, reply): Promise<AssignmentSummaryResponse | FastifyReply | undefined> => {
+    const id = parseOr400(pathIdSchema, (request.params as { id: string }).id, reply, 'Invalid assignment id');
     if (id === null) {
-      return badRequest(reply, 'Invalid assignment id');
+      return;
     }
 
     return sendLifecycleResult(reply, archiveAssignment(sqlite, id));
   });
 
-  app.post('/assignments/:id/unarchive', async (request, reply): Promise<AssignmentSummaryResponse | FastifyReply> => {
-    const id = parseIdParam(request.params);
+  app.post('/assignments/:id/unarchive', async (request, reply): Promise<AssignmentSummaryResponse | FastifyReply | undefined> => {
+    const id = parseOr400(pathIdSchema, (request.params as { id: string }).id, reply, 'Invalid assignment id');
     if (id === null) {
-      return badRequest(reply, 'Invalid assignment id');
+      return;
     }
 
     return sendLifecycleResult(reply, unarchiveAssignment(sqlite, id));

@@ -1,5 +1,6 @@
 import {
   intakeRequestSchema,
+  isKanjiChar,
   type AssignmentOrigin,
   type AssignmentStatus,
   type IntakeResponse,
@@ -49,14 +50,6 @@ function intakeSuccessBody(
     },
     assignment
   };
-}
-
-function isKanjiChar(char: string): boolean {
-  const codePoint = char.codePointAt(0);
-  if (!codePoint) {
-    return false;
-  }
-  return (codePoint >= 0x4e00 && codePoint <= 0x9fff) || (codePoint >= 0x3400 && codePoint <= 0x4dbf);
 }
 
 function kanjiSvgFilename(char: string): string {
