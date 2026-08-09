@@ -1,4 +1,8 @@
 import {
+  dashboardQuerySchema,
+  kanjiLiteralSchema,
+  pathIdSchema,
+  stringArraySchema,
   type DashboardResponse,
   type KanjiStatsResponse,
   type SlowestWordsResponse,
@@ -9,8 +13,7 @@ import {
 import type { FastifyInstance, FastifyReply } from 'fastify';
 
 import { todayIsoDate } from '../config.js';
-import { badRequest, notFound, parseIdParam } from '../http.js';
-import { safeJsonParse } from '../util.js';
+import { notFound, parseOr400 } from '../http.js';
 
 import {
   getDashboardTodayRow,
@@ -29,8 +32,12 @@ import {
 } from './queries.js';
 
 export function registerStatsRoutes(app: FastifyInstance): void {
-  app.get('/stats/dashboard', async (request): Promise<DashboardResponse> => {
-    const query = request.query as { from?: string; to?: string };
+  app.get('/stats/dashboard', async (request, reply): Promise<DashboardResponse | undefined> => {
+    const query = parseOr400(dashboardQuerySchema, request.query, reply, 'Invalid date');
+    if (query === null) {
+      return;
+    }
+
     const to = query.to ?? todayIsoDate();
     const fromDate = query.from ?? new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
@@ -66,9 +73,9 @@ export function registerStatsRoutes(app: FastifyInstance): void {
   });
 
   app.get('/stats/study-items/:id', async (request, reply): Promise<StudyItemStatsResponse | FastifyReply | undefined> => {
-    const id = parseIdParam(request.params);
+    const id = parseOr400(pathIdSchema, (request.params as { id: string }).id, reply, 'Invalid study item id');
     if (id === null) {
-      return badRequest(reply, 'Invalid study item id');
+      return;
     }
 
     const studyItem = getStudyItemById(id);
@@ -96,25 +103,26 @@ export function registerStatsRoutes(app: FastifyInstance): void {
 
   app.get('/stats/kanji/:literal', async (request, reply): Promise<KanjiStatsResponse | FastifyReply | undefined> => {
     const literal = decodeURIComponent((request.params as { literal: string }).literal);
-    if (!literal) {
-      return badRequest(reply, 'Invalid kanji literal');
+    const parsed = parseOr400(kanjiLiteralSchema, literal, reply, 'Invalid kanji literal');
+    if (parsed === null) {
+      return;
     }
 
-    const row = getKanjiByLiteral(literal);
+    const row = getKanjiByLiteral(parsed);
 
     if (!row) {
       return notFound(reply, 'Kanji not found');
     }
 
-    const stats = getKanjiStats(literal);
-    const studyItems = getKanjiStudyItems(literal);
+    const stats = getKanjiStats(parsed);
+    const studyItems = getKanjiStudyItems(parsed);
 
     return {
       kanji: {
         literal: row.literal,
-        meanings: safeJsonParse<string[]>(row.meanings_json),
-        onyomi: safeJsonParse<string[]>(row.onyomi_json),
-        kunyomi: safeJsonParse<string[]>(row.kunyomi_json),
+        meanings: stringArraySchema.parse(row.meanings_json),
+        onyomi: stringArraySchema.parse(row.onyomi_json),
+        kunyomi: stringArraySchema.parse(row.kunyomi_json),
         stroke_count: row.stroke_count,
         grade: row.grade,
         jlpt_level: row.jlpt_level,
@@ -169,8 +177,8 @@ export function registerStatsRoutes(app: FastifyInstance): void {
         word_count: row.word_count,
         total_assignments: row.total_assignments,
         times_drilled: row.times_drilled,
-        onyomi: safeJsonParse<string[]>(row.onyomi_json),
-        kunyomi: safeJsonParse<string[]>(row.kunyomi_json),
+        onyomi: stringArraySchema.parse(row.onyomi_json),
+        kunyomi: stringArraySchema.parse(row.kunyomi_json),
         stroke_count: row.stroke_count,
         grade: row.grade
       }))

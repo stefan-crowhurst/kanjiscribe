@@ -1,8 +1,7 @@
-import type { DictionaryMatchType, DictionarySearchResult } from '@kanjiscribe/shared';
+import { stringArraySchema, type DictionaryMatchType, type DictionarySearchResult } from '@kanjiscribe/shared';
 
 import { todayIsoDate } from '../config.js';
 import { sqlite } from '../db/client.js';
-import { safeJsonParse } from '../util.js';
 
 const MATCH_PRIORITY: Record<DictionaryMatchType, number> = {
   exact_spelling: 0,
@@ -144,7 +143,7 @@ export function searchDictionary(query: string): DictionarySearchResult[] {
 
   return baseRows
     .map((row) => {
-      const glosses = safeJsonParse<string[]>(row.first_glosses_json).slice(0, 5);
+      const glosses = stringArraySchema.parse(row.first_glosses_json).slice(0, 5);
       return {
         entry_id: row.id,
         primary_spelling: row.primary_spelling,

@@ -82,7 +82,7 @@ pending ──complete──→ completed
 
 ## Day's queue
 
-The set of assignments for a given `assigned_for_date` that are not `archived`, ordered by `created_at`. A derived view, not a persisted collection — there is no `queue` table. "Queue" is UI/navigation language; the persisted concept is the per-day assignment set.
+The set of assignments for a given `assigned_for_date` that are not `archived`, presented in the user's arranged order. Ordering is user-defined for `pending` and `skipped` assignments via drag-and-drop; a `completed` assignment keeps the position it held when arranged (a status change never moves it), and assignments that were never arranged fall back to `created_at` order. No backfill exists — historical data keeps `created_at` ordering until a day is first reordered. A derived view, not a persisted collection — the order is stored per assignment (a nullable per-day position, `NULL` rows sorting after positioned rows), not in a queue table. "Queue" is UI/navigation language; the persisted concept is the per-day assignment set.
 
 **Fully completed day**:
 A day whose non-`archived` assignments contain no `pending`/`skipped` rows **and** at least one `completed` row. A day with zero assignments (all archived) is **not** fully completed — it is an empty day (see ghost-completed day ADR). Enforced by the `v_day_summary.is_fully_completed` view column.

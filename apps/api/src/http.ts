@@ -26,11 +26,3 @@ export function parseOr400<TSchema extends z.ZodTypeAny>(
   }
   return parsed.data;
 }
-
-export function parseIdParam(params: unknown): number | null {
-  const id = Number((params as { id: string }).id);
-  if (!Number.isInteger(id) || id <= 0) {
-    return null;
-  }
-  return id;
-}

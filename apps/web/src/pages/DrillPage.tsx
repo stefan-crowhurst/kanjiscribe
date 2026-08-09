@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { type DrillPayload } from '@kanjiscribe/shared';
+import {
+  pathIdSchema,
+  queueIdsSchema,
+  queueLabelSchema,
+  queueSourceSchema,
+  type DrillPayload
+} from '@kanjiscribe/shared';
 
 import { LoadingState } from '../components/LoadingState.js';
 import {
@@ -16,9 +22,15 @@ import {
 export function DrillPage() {
   const { assignmentId } = useParams();
   const [params] = useSearchParams();
-  const queueSource = params.get('queue_source');
-  const queueLabel = params.get('queue_label');
   const navigate = useNavigate();
+
+  // URL params parse through the shared schemas (ADR-0006): a junk
+  // `queue_source` or `queue_label` degrades to absent rather than ever
+  // reaching the api or the navigation links.
+  const queueSourceParse = queueSourceSchema.safeParse(params.get('queue_source') ?? undefined);
+  const queueSource = queueSourceParse.success ? queueSourceParse.data : undefined;
+  const queueLabelParse = queueLabelSchema.safeParse(params.get('queue_label') ?? undefined);
+  const queueLabel = queueLabelParse.success ? queueLabelParse.data : undefined;
 
   const [data, setData] = useState<DrillPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -28,20 +40,16 @@ export function DrillPage() {
   const fetchIdRef = useRef(0);
 
   const customQueueIds = useMemo(() => {
-    const raw = params.get('queue_ids');
-    if (!raw) {
-      return [] as number[];
-    }
-
-    const parsedIds = raw
-      .split(',')
-      .map((value) => Number(value))
-      .filter((value) => Number.isInteger(value) && value > 0);
-
-    return Array.from(new Set(parsedIds));
+    const parsed = queueIdsSchema.safeParse(params.get('queue_ids') ?? undefined);
+    return parsed.success ? parsed.data : [];
   }, [params]);
 
-  const currentAssignmentId = Number(assignmentId);
+  // Route id through the shared path-id schema: junk ids are caught by the
+  // fetch effect below (error state, no request); the queue math only runs
+  // with valid ids once data has loaded.
+  const assignmentIdParse = useMemo(() => pathIdSchema.safeParse(assignmentId), [assignmentId]);
+  const parsedAssignmentId = assignmentIdParse.success ? assignmentIdParse.data : null;
+  const currentAssignmentId = parsedAssignmentId ?? NaN;
   const customQueueIndex = customQueueIds.findIndex((id) => id === currentAssignmentId);
   const hasCustomQueue = customQueueIndex >= 0;
   const customNextAssignmentId = hasCustomQueue ? customQueueIds[customQueueIndex + 1] ?? null : null;
@@ -67,10 +75,6 @@ export function DrillPage() {
   }, [customQueueIds, hasCustomQueue, queueLabel, queueSource]);
 
   useEffect(() => {
-    if (!assignmentId) {
-      return;
-    }
-
     const fetchId = ++fetchIdRef.current;
     setData(null);
     setElapsedMs(0);
@@ -78,7 +82,15 @@ export function DrillPage() {
     setIsReopening(false);
     setIsSubmitting(false);
 
-    getDrillPayload(Number(assignmentId), queueSource ?? undefined)
+    if (!assignmentIdParse.success) {
+      // A malformed route id never reaches the api: surface the same 400
+      // message the drill route would return through the existing error
+      // state, without a request (no hang, no double-load).
+      setError('Invalid assignment id');
+      return;
+    }
+
+    getDrillPayload(assignmentIdParse.data, queueSource)
       .then((payload) => {
         if (fetchId === fetchIdRef.current) {
           setData(payload);
@@ -89,7 +101,7 @@ export function DrillPage() {
           setError(err instanceof Error ? err.message : 'Failed to load drill payload');
         }
       });
-  }, [assignmentId, queueSource]);
+  }, [assignmentIdParse, queueSource]);
 
   useEffect(() => {
     if (!data || isSubmitting || isReopening) {
@@ -148,7 +160,8 @@ export function DrillPage() {
   }
 
   async function handleReopen() {
-    if (!data) {
+    // Only reachable with loaded data, which implies a valid route id.
+    if (!data || parsedAssignmentId === null) {
       return;
     }
 
@@ -161,7 +174,7 @@ export function DrillPage() {
       // Reset timer and refresh data
       setElapsedMs(0);
 
-      const refreshedData = await getDrillPayload(Number(assignmentId), queueSource ?? undefined);
+      const refreshedData = await getDrillPayload(parsedAssignmentId, queueSource);
       setData(refreshedData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reopen assignment');

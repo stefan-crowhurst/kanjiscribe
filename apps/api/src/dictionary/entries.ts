@@ -1,7 +1,6 @@
-import type { DictionaryEntryDetail } from '@kanjiscribe/shared';
+import { stringArraySchema, type DictionaryEntryDetail } from '@kanjiscribe/shared';
 
 import { sqlite } from '../db/client.js';
-import { safeJsonParse } from '../util.js';
 
 export function getEntryDetails(entryId: number): DictionaryEntryDetail | null {
   const entry = sqlite
@@ -93,12 +92,12 @@ export function getEntryDetails(entryId: number): DictionaryEntryDetail | null {
     })),
     senses: senses.map((sense) => ({
       sense_index: sense.sense_index,
-      glosses: safeJsonParse<string[]>(sense.glosses_json),
-      parts_of_speech: safeJsonParse<string[]>(sense.parts_of_speech_json),
-      misc_tags: safeJsonParse<string[]>(sense.misc_tags_json),
-      field_tags: safeJsonParse<string[]>(sense.field_tags_json),
-      dialect_tags: safeJsonParse<string[]>(sense.dialect_tags_json),
-      info: safeJsonParse<string[]>(sense.info_json)
+      glosses: stringArraySchema.parse(sense.glosses_json),
+      parts_of_speech: stringArraySchema.parse(sense.parts_of_speech_json),
+      misc_tags: stringArraySchema.parse(sense.misc_tags_json),
+      field_tags: stringArraySchema.parse(sense.field_tags_json),
+      dialect_tags: stringArraySchema.parse(sense.dialect_tags_json),
+      info: stringArraySchema.parse(sense.info_json)
     })),
     reading_restrictions: readingRestrictions
   };

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { type Assignment, type HeatmapDay } from '@kanjiscribe/shared';
+import { dateSchema, type Assignment, type HeatmapDay } from '@kanjiscribe/shared';
 
 import { DeltaChip } from '../components/DeltaChip.js';
 import { RemoveButton } from '../components/RemoveButton.js';
@@ -18,9 +18,18 @@ export function DayDetailPage() {
       return;
     }
 
+    // The route date parses through the shared date schema (ADR-0006): a
+    // malformed date rejects here — surfacing the page's error state —
+    // instead of reaching the request builders or the date math in
+    // formatDate.
+    const parsedDate = dateSchema.safeParse(date);
+    if (!parsedDate.success) {
+      throw new Error('Invalid date');
+    }
+
     const [assignmentsRes, statsRes] = await Promise.all([
-      listAssignments({ date }),
-      getDashboardStats(date, date)
+      listAssignments({ date: parsedDate.data }),
+      getDashboardStats(parsedDate.data, parsedDate.data)
     ]);
     setAssignments(assignmentsRes.assignments);
     const summary = statsRes.heatmap.find((d) => d.date === date);
