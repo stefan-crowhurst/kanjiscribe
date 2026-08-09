@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Bar,
   CartesianGrid,
@@ -10,9 +10,10 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
-import { type DashboardResponse } from '@kanjiscribe/shared';
 
-import { formatMs, formatShortDate, getDashboardStats } from '../lib/api.js';
+import { useDashboardStats } from '../hooks/useDashboardStats.js';
+import { formatMs, formatShortDate } from '../lib/api.js';
+import { LoadingState } from './LoadingState.js';
 
 type TimeInterval = 7 | 14 | 30;
 
@@ -164,8 +165,6 @@ function AvgTooltipContent({ active, payload }: { active?: boolean; payload?: Ar
 export function ProgressCharts() {
   const [intervalDays, setIntervalDays] = useState<TimeInterval>(7);
   const [pageOffset, setPageOffset] = useState(0);
-  const [data, setData] = useState<DashboardResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const range = useMemo(() => {
     const toDate = new Date();
@@ -181,11 +180,7 @@ export function ProgressCharts() {
     };
   }, [pageOffset, intervalDays]);
 
-  useEffect(() => {
-    getDashboardStats(range.from, range.to)
-      .then(setData)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load charts'));
-  }, [range.from, range.to]);
+  const { data, error } = useDashboardStats(range.from, range.to, 'Failed to load charts');
 
   const activeDays = useMemo(() => {
     if (!data) return [];
@@ -297,14 +292,6 @@ export function ProgressCharts() {
     return ticks;
   }, [maxAvgMin]);
 
-  if (error) {
-    return <p className="error">{error}</p>;
-  }
-
-  if (!data) {
-    return <p className="muted">Loading charts...</p>;
-  }
-
   return (
     <article className="card section-card">
       <div className="heatmap-heading">
@@ -336,9 +323,14 @@ export function ProgressCharts() {
         </div>
       </div>
 
-      <div className="charts-grid">
-        <div className="chart-container">
-          <h3>Total Time</h3>
+      {error ? (
+        <p className="error">{error}</p>
+      ) : !data ? (
+        <LoadingState message="Loading charts..." />
+      ) : (
+        <div className="charts-grid">
+          <div className="chart-container">
+            <h3>Total Time</h3>
           <ResponsiveContainer width="100%" height={180}>
             <ComposedChart data={timeChartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e4d4c2" />
@@ -386,7 +378,8 @@ export function ProgressCharts() {
             </ComposedChart>
           </ResponsiveContainer>
         </div>
-      </div>
+        </div>
+      )}
     </article>
   );
 }

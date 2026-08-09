@@ -9,13 +9,15 @@ export function AssignmentList({
   queueSource,
   getDrillQuery,
   variant,
-  onRemove
+  onRemove,
+  removingId
 }: {
   assignments: Assignment[];
   queueSource?: 'today' | 'backlog';
   getDrillQuery?: (assignment: Assignment) => string;
   variant?: 'today';
   onRemove?: (assignment: Assignment) => void;
+  removingId?: number | null;
 }) {
   const navigate = useNavigate();
 
@@ -29,6 +31,7 @@ export function AssignmentList({
         const isPending = assignment.status === 'pending';
         const isCompleted = assignment.status === 'completed';
         const isRemovable = isPending || assignment.status === 'skipped';
+        const isRemoving = assignment.id === removingId;
         const cardClassName = `card assignment-card ${isCompleted ? 'assignment-card--completed' : ''} ${variant === 'today' && isCompleted ? 'assignment-card--today-completed' : ''}`;
 
         const drillQuery = getDrillQuery?.(assignment) ?? (queueSource ? `?queue_source=${queueSource}` : '');
@@ -41,7 +44,12 @@ export function AssignmentList({
             key={assignment.id}
             className={cardClassName}
             style={{ cursor: 'pointer' }}
-            onClick={() => navigate(cardUrl)}
+            onClick={() => {
+              if (isRemoving) {
+                return;
+              }
+              navigate(cardUrl);
+            }}
           >
             <div className="assignment-card-content">
               <strong>{assignment.study_item.surface_form}</strong>
@@ -52,7 +60,7 @@ export function AssignmentList({
               </small>
             </div>
             {onRemove && isRemovable ? (
-              <RemoveButton onConfirm={() => onRemove(assignment)} />
+              <RemoveButton onConfirm={() => onRemove(assignment)} pending={isRemoving} />
             ) : null}
           </article>
         );

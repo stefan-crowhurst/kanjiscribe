@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { type DashboardResponse, type DictionarySearchResult } from '@kanjiscribe/shared';
 
+import { LoadingState } from '../components/LoadingState.js';
 import { getDashboardStats, intakeStudyItem, searchDictionary, todayDateString } from '../lib/api.js';
 
 export function IntakePage() {
@@ -126,28 +127,28 @@ export function IntakePage() {
       <div className="intake-stats intake-stats-desktop" aria-label="intake context stats">
         <article className="intake-stat-pill">
           <span>Today Assigned</span>
-          <strong>{intakeStats?.today.total ?? 0}</strong>
+          <strong>{intakeStats?.today.total ?? '—'}</strong>
         </article>
         <article className="intake-stat-pill">
           <span>Incomplete Days</span>
-          <strong>{intakeStats?.overdue.incomplete_days ?? 0}</strong>
+          <strong>{intakeStats?.overdue.incomplete_days ?? '—'}</strong>
         </article>
         <article className="intake-stat-pill">
           <span>Backlog Words</span>
-          <strong>{intakeStats?.overdue.total_pending ?? 0}</strong>
+          <strong>{intakeStats?.overdue.total_pending ?? '—'}</strong>
         </article>
       </div>
 
       <details className="intake-stats intake-stats-mobile" aria-label="intake context stats">
         <summary>
-          Today Assigned: <strong>{intakeStats?.today.total ?? 0}</strong>
+          Today Assigned: <strong>{intakeStats?.today.total ?? '—'}</strong>
         </summary>
         <div className="intake-stats-mobile-body">
           <p>
-            Incomplete Days: <strong>{intakeStats?.overdue.incomplete_days ?? 0}</strong>
+            Incomplete Days: <strong>{intakeStats?.overdue.incomplete_days ?? '—'}</strong>
           </p>
           <p>
-            Backlog Words: <strong>{intakeStats?.overdue.total_pending ?? 0}</strong>
+            Backlog Words: <strong>{intakeStats?.overdue.total_pending ?? '—'}</strong>
           </p>
         </div>
       </details>
@@ -182,10 +183,7 @@ export function IntakePage() {
         <div className="card section-card intake-results-card">
           <h3>Candidate Entries</h3>
           {isSearching ? (
-            <div className="intake-loading" role="status" aria-live="polite" aria-busy="true">
-              <span className="loading-spinner" aria-hidden="true" />
-              <p>Searching dictionary...</p>
-            </div>
+            <LoadingState message="Searching dictionary..." />
           ) : (
             <div className="candidate-list candidate-list-scroll">
               {results.map((entry) => (
