@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { type ViewPayload } from '@kanjiscribe/shared';
 
+import { LoadingState } from '../components/LoadingState.js';
 import { apiAssetUrl, formatMs, getViewPayload } from '../lib/api.js';
 
 export function WordViewPage() {
@@ -10,6 +11,7 @@ export function WordViewPage() {
   const dayDate = params.get('day');
   const [data, setData] = useState<ViewPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const fetchIdRef = useRef(0);
 
   const idsParam = params.get('ids');
   const ids = useMemo(() => {
@@ -30,11 +32,21 @@ export function WordViewPage() {
       return;
     }
 
+    const fetchId = ++fetchIdRef.current;
     setError(null);
+    setData(null);
 
     getViewPayload(Number(assignmentId))
-      .then(setData)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load word details'));
+      .then((payload) => {
+        if (fetchId === fetchIdRef.current) {
+          setData(payload);
+        }
+      })
+      .catch((err) => {
+        if (fetchId === fetchIdRef.current) {
+          setError(err instanceof Error ? err.message : 'Failed to load word details');
+        }
+      });
   }, [assignmentId]);
 
   const gloss = useMemo(() => data?.dictionary_entry.senses[0]?.glosses?.join('; ') ?? '-', [data]);
@@ -44,7 +56,7 @@ export function WordViewPage() {
   }
 
   if (!data) {
-    return <p className="muted">Loading word details...</p>;
+    return <LoadingState message="Loading word details..." />;
   }
 
   const backLink = dayDate ? `/day/${dayDate}` : '/';

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { type DrillPayload } from '@kanjiscribe/shared';
 
+import { LoadingState } from '../components/LoadingState.js';
 import {
   apiAssetUrl,
   completeAssignment,
@@ -24,6 +25,7 @@ export function DrillPage() {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [isReopening, setIsReopening] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const fetchIdRef = useRef(0);
 
   const customQueueIds = useMemo(() => {
     const raw = params.get('queue_ids');
@@ -69,26 +71,41 @@ export function DrillPage() {
       return;
     }
 
+    const fetchId = ++fetchIdRef.current;
+    setData(null);
     setElapsedMs(0);
     setError(null);
     setIsReopening(false);
     setIsSubmitting(false);
 
     getDrillPayload(Number(assignmentId), queueSource ?? undefined)
-      .then(setData)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load drill payload'));
+      .then((payload) => {
+        if (fetchId === fetchIdRef.current) {
+          setData(payload);
+        }
+      })
+      .catch((err) => {
+        if (fetchId === fetchIdRef.current) {
+          setError(err instanceof Error ? err.message : 'Failed to load drill payload');
+        }
+      });
   }, [assignmentId, queueSource]);
 
   useEffect(() => {
+    if (!data || isSubmitting || isReopening) {
+      return;
+    }
+
     const timer = setInterval(() => {
       setElapsedMs((current) => current + 1000);
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [data, isSubmitting, isReopening]);
 
   const gloss = useMemo(() => data?.dictionary_entry.senses[0]?.glosses?.join('; ') ?? '-', [data]);
 
   const isCompleted = data?.assignment.status === 'completed';
+  const isTransitioning = isSubmitting || isReopening;
 
   async function updateAssignment(action: 'complete' | 'skip') {
     if (!data || isSubmitting) {
@@ -157,8 +174,12 @@ export function DrillPage() {
     return <p className="error">{error}</p>;
   }
 
+  if (isTransitioning) {
+    return <LoadingState message="Loading next word..." />;
+  }
+
   if (!data) {
-    return <p className="muted">Loading drill item...</p>;
+    return <LoadingState message="Loading drill item..." />;
   }
 
   return (

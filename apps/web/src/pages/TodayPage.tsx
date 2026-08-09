@@ -4,9 +4,10 @@ import { type Assignment, type HeatmapDay } from '@kanjiscribe/shared';
 
 import { AssignmentList } from '../components/AssignmentList.js';
 import { DeltaChip } from '../components/DeltaChip.js';
+import { LoadingState } from '../components/LoadingState.js';
 import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
-import { useEstimate } from '../hooks/useEstimate.js';
-import { formatJapaneseDate, formatMsEstimate, getDashboardStats, listAssignments, todayDateString } from '../lib/api.js';
+import { formatEstimateLabel, useEstimate } from '../hooks/useEstimate.js';
+import { formatJapaneseDate, getDashboardStats, listAssignments, todayDateString } from '../lib/api.js';
 
 type DayStats = Pick<HeatmapDay, 'total_assignments' | 'completed_count' | 'pending_count'>;
 
@@ -45,15 +46,17 @@ export function TodayPage() {
     refresh().catch((err) => setError(err instanceof Error ? err.message : 'Failed to load today assignments'));
   }, [refresh]);
 
-  const handleRemove = useArchiveRemoval(refresh, setError);
+  const { handleRemove, removingId } = useArchiveRemoval(refresh, setError);
 
   const completed = dayStats?.completed_count ?? 0;
   const total = dayStats?.total_assignments ?? assignments?.length ?? 0;
   const unfinishedAssignments =
     assignments?.filter((a) => a.status === 'pending' || a.status === 'skipped') ?? [];
   const remaining = unfinishedAssignments.length;
+  const countsKnown = dayStats !== null || assignments !== null;
 
   const firstUnfinishedId = unfinishedAssignments[0]?.id;
+  const todayEstimateLabel = formatEstimateLabel(todayEstimate);
 
   return (
     <section>
@@ -61,11 +64,15 @@ export function TodayPage() {
         <div>
           <h2>Today</h2>
           <p className="muted today-date">{formatJapaneseDate(todayDateString())}</p>
+          {countsKnown ? (
+            <p className="muted">
+              {completed}/{total} drilled, {remaining} remaining
+            </p>
+          ) : (
+            <LoadingState message="Loading today's stats..." />
+          )}
           <p className="muted">
-            {completed}/{total} drilled, {remaining} remaining
-          </p>
-          <p className="muted">
-            Estimate: {todayEstimate === null ? '—' : formatMsEstimate(todayEstimate)}
+            Estimate: {todayEstimateLabel}
           </p>
         </div>
         {firstUnfinishedId ? (
@@ -80,12 +87,17 @@ export function TodayPage() {
         </p>
       ) : null}
       {error ? <p className="error">{error}</p> : null}
-      <AssignmentList
-        assignments={assignments ?? []}
-        queueSource="today"
-        variant="today"
-        onRemove={handleRemove}
-      />
+      {assignments === null ? (
+        <LoadingState message="Loading today's assignments..." />
+      ) : (
+        <AssignmentList
+          assignments={assignments}
+          queueSource="today"
+          variant="today"
+          onRemove={handleRemove}
+          removingId={removingId}
+        />
+      )}
     </section>
   );
 }

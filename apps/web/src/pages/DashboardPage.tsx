@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  type DashboardResponse,
   type SlowestWordsResponse,
   type TopKanjiResponse,
   type TopWordsResponse
@@ -11,12 +10,12 @@ import { DeltaChip } from '../components/DeltaChip.js';
 import { Heatmap } from '../components/Heatmap.js';
 import { ProgressCharts } from '../components/ProgressCharts.js';
 import { KanjiIcon } from '../components/KanjiIcon.js';
-import { useEstimate } from '../hooks/useEstimate.js';
+import { LoadingState } from '../components/LoadingState.js';
+import { useDashboardStats } from '../hooks/useDashboardStats.js';
+import { formatEstimateLabel, useEstimate } from '../hooks/useEstimate.js';
 import {
   formatMs,
-  formatMsEstimate,
   formatShortDate,
-  getDashboardStats,
   getSlowestWords,
   getTopKanji,
   getTopWords,
@@ -24,11 +23,12 @@ import {
 } from '../lib/api.js';
 
 export function DashboardPage() {
-  const [data, setData] = useState<DashboardResponse | null>(null);
   const [topWords, setTopWords] = useState<TopWordsResponse | null>(null);
   const [slowestWords, setSlowestWords] = useState<SlowestWordsResponse | null>(null);
   const [topKanji, setTopKanji] = useState<TopKanjiResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [topWordsError, setTopWordsError] = useState<string | null>(null);
+  const [slowestWordsError, setSlowestWordsError] = useState<string | null>(null);
+  const [topKanjiError, setTopKanjiError] = useState<string | null>(null);
   const [yearOffset, setYearOffset] = useState(0);
   const todayEstimate = useEstimate('today');
   const backlogEstimate = useEstimate('backlog-days');
@@ -46,36 +46,32 @@ export function DashboardPage() {
     };
   }, [yearOffset]);
 
-  useEffect(() => {
-    getDashboardStats(range.from, range.to)
-      .then(setData)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load dashboard'));
-  }, [range.from, range.to]);
+  const { data, error } = useDashboardStats(range.from, range.to, 'Failed to load dashboard');
 
   useEffect(() => {
-    Promise.all([getTopWords(), getSlowestWords(), getTopKanji()])
-      .then(([top, slowest, kanji]) => {
-        setTopWords(top);
-        setSlowestWords(slowest);
-        setTopKanji(kanji);
-      })
-      .catch(() => {});
+    getTopWords()
+      .then(setTopWords)
+      .catch((err) => setTopWordsError(err instanceof Error ? err.message : 'Failed to load top words'));
+    getSlowestWords()
+      .then(setSlowestWords)
+      .catch((err) => setSlowestWordsError(err instanceof Error ? err.message : 'Failed to load slowest words'));
+    getTopKanji()
+      .then(setTopKanji)
+      .catch((err) => setTopKanjiError(err instanceof Error ? err.message : 'Failed to load top kanji'));
   }, []);
 
   if (error) {
     return <p className="error">{error}</p>;
   }
 
-  if (!data) {
-    return <p className="muted">Loading dashboard...</p>;
-  }
-
-  const hasTodayQueue = data.today.pending > 0;
-  const hasBacklog = data.overdue.incomplete_days > 0;
+  const hasTodayQueue = (data?.today.pending ?? 0) > 0;
+  const hasBacklog = (data?.overdue.incomplete_days ?? 0) > 0;
   // Server-gated day verdict: only the dashboard row for today, and only when
   // the server returned a non-null `estimate_delta_ms` (today is strictly
   // fully completed with full snapshot coverage).
-  const todayDeltaMs = data.heatmap.find((d) => d.date === todayDateString())?.estimate_delta_ms ?? null;
+  const todayDeltaMs = data?.heatmap.find((d) => d.date === todayDateString())?.estimate_delta_ms ?? null;
+  const todayEstimateLabel = formatEstimateLabel(todayEstimate);
+  const backlogEstimateLabel = formatEstimateLabel(backlogEstimate);
 
   return (
     <section>
@@ -94,34 +90,38 @@ export function DashboardPage() {
         </Link>
       </div>
 
-      <div className="dashboard-grid">
-        <article className="card stat-card">
-          <h2>Today</h2>
-          <p>{data.today.total} assignments</p>
-          <small>
-            {data.today.completed} completed, {data.today.pending} remaining
-          </small>
-          <small>
-            Estimate: {todayEstimate === null ? '—' : formatMsEstimate(todayEstimate)}
-          </small>
-        </article>
-        <article className="card stat-card">
-          <h2>Overdue</h2>
-          <p>{data.overdue.total_pending} open</p>
-          <small>Oldest: {data.overdue.oldest_date ? formatShortDate(data.overdue.oldest_date) : 'none'}</small>
-          <small>Estimate: {backlogEstimate === null ? '—' : formatMsEstimate(backlogEstimate)}</small>
-        </article>
-        <article className="card stat-card">
-          <h2>Today Time</h2>
-          <p>{formatMs(data.today.total_time_ms)}</p>
-          <small>Average: {formatMs(data.today.avg_time_per_assignment_ms)}</small>
-          {todayDeltaMs !== null && (
+      {data ? (
+        <div className="dashboard-grid">
+          <article className="card stat-card">
+            <h2>Today</h2>
+            <p>{data.today.total} assignments</p>
             <small>
-              Day verdict: <DeltaChip deltaMs={todayDeltaMs} />
+              {data.today.completed} completed, {data.today.pending} remaining
             </small>
-          )}
-        </article>
-      </div>
+            <small>
+              Estimate: {todayEstimateLabel}
+            </small>
+          </article>
+          <article className="card stat-card">
+            <h2>Overdue</h2>
+            <p>{data.overdue.total_pending} open</p>
+            <small>Oldest: {data.overdue.oldest_date ? formatShortDate(data.overdue.oldest_date) : 'none'}</small>
+            <small>Estimate: {backlogEstimateLabel}</small>
+          </article>
+          <article className="card stat-card">
+            <h2>Today Time</h2>
+            <p>{formatMs(data.today.total_time_ms)}</p>
+            <small>Average: {formatMs(data.today.avg_time_per_assignment_ms)}</small>
+            {todayDeltaMs !== null && (
+              <small>
+                Day verdict: <DeltaChip deltaMs={todayDeltaMs} />
+              </small>
+            )}
+          </article>
+        </div>
+      ) : (
+        <LoadingState message="Loading dashboard..." />
+      )}
 
       <article className="card section-card">
         <div className="heatmap-heading">
@@ -148,7 +148,11 @@ export function DashboardPage() {
             </div>
           </div>
         </div>
-        <Heatmap days={data.heatmap} from={range.from} to={range.to} />
+        {data ? (
+          <Heatmap days={data.heatmap} from={range.from} to={range.to} />
+        ) : (
+          <LoadingState message="Loading heatmap..." />
+        )}
       </article>
 
       <ProgressCharts />
@@ -156,7 +160,11 @@ export function DashboardPage() {
       <div className="reporting-grid">
         <article className="card section-card">
           <h2>Most Drilled Words</h2>
-          {topWords?.words.length ? (
+          {topWordsError ? (
+            <p className="error">{topWordsError}</p>
+          ) : topWords === null ? (
+            <LoadingState message="Loading..." />
+          ) : topWords.words.length ? (
             <ol className="reporting-list">
               {topWords.words.map((word) => (
                 <li key={word.study_item_id}>
@@ -177,7 +185,11 @@ export function DashboardPage() {
 
         <article className="card section-card">
           <h2>Slowest Words</h2>
-          {slowestWords?.words.length ? (
+          {slowestWordsError ? (
+            <p className="error">{slowestWordsError}</p>
+          ) : slowestWords === null ? (
+            <LoadingState message="Loading..." />
+          ) : slowestWords.words.length ? (
             <ol className="reporting-list">
               {slowestWords.words.map((word) => (
                 <li key={word.study_item_id}>
@@ -198,7 +210,11 @@ export function DashboardPage() {
 
         <article className="card section-card">
           <h2>Most Drilled Kanji</h2>
-          {topKanji?.kanji.length ? (
+          {topKanjiError ? (
+            <p className="error">{topKanjiError}</p>
+          ) : topKanji === null ? (
+            <LoadingState message="Loading..." />
+          ) : topKanji.kanji.length ? (
             <ol className="reporting-list">
               {topKanji.kanji.map((k) => {
                 const readings = [k.onyomi[0], k.kunyomi[0]].filter(Boolean);

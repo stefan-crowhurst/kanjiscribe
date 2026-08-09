@@ -2,7 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 
 const ARM_TIMEOUT_MS = 3000;
 
-export function RemoveButton({ onConfirm }: { onConfirm: () => void }) {
+export function RemoveButton({
+  onConfirm,
+  pending
+}: {
+  onConfirm: () => void;
+  pending?: boolean;
+}) {
   const [armed, setArmed] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -49,6 +55,9 @@ export function RemoveButton({ onConfirm }: { onConfirm: () => void }) {
   }
 
   function handleClick() {
+    if (pending) {
+      return;
+    }
     if (armed) {
       disarm();
       onConfirm();
@@ -66,9 +75,10 @@ export function RemoveButton({ onConfirm }: { onConfirm: () => void }) {
         event.stopPropagation();
         handleClick();
       }}
-      aria-label={armed ? 'Confirm?' : 'Remove'}
+      disabled={pending}
+      aria-label={pending ? 'Removing...' : armed ? 'Confirm?' : 'Remove'}
     >
-      {armed ? 'Confirm?' : 'Remove'}
+      {pending ? 'Removing...' : armed ? 'Confirm?' : 'Remove'}
     </button>
   );
 }

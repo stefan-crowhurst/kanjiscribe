@@ -31,7 +31,7 @@ export function DayDetailPage() {
     refresh().catch((err) => setError(err instanceof Error ? err.message : 'Failed to load day details'));
   }, [refresh]);
 
-  const handleRemove = useArchiveRemoval(refresh, setError);
+  const { handleRemove, removingId } = useArchiveRemoval(refresh, setError);
 
   const sortedAssignments = useMemo(() => {
     if (!assignments) return [];
@@ -133,6 +133,7 @@ export function DayDetailPage() {
                     assignment={assignment}
                     dayDate={date!}
                     onRemove={handleRemove}
+                    removingId={removingId}
                   />
                 ))}
               </div>
@@ -156,18 +157,21 @@ function DayAssignmentCard({
   assignment,
   dayDate,
   allIds,
-  onRemove
+  onRemove,
+  removingId
 }: {
   assignment: Assignment;
   dayDate: string;
   allIds?: number[];
   onRemove?: (assignment: Assignment) => void;
+  removingId?: number | null;
 }) {
   const navigate = useNavigate();
   const isCompleted = assignment.status === 'completed';
   const isSkipped = assignment.status === 'skipped';
   const isPending = assignment.status === 'pending';
   const isRemovable = isPending || isSkipped;
+  const isRemoving = assignment.id === removingId;
 
   const viewUrl = allIds && allIds.length > 0
     ? `/word/${assignment.id}?day=${dayDate}&ids=${allIds.join(',')}`
@@ -176,13 +180,20 @@ function DayAssignmentCard({
   const cardUrl = isCompleted ? viewUrl : drillUrl;
 
   const removeButton =
-    onRemove && isRemovable ? <RemoveButton onConfirm={() => onRemove(assignment)} /> : null;
+    onRemove && isRemovable ? (
+      <RemoveButton onConfirm={() => onRemove(assignment)} pending={isRemoving} />
+    ) : null;
 
   return (
     <article
       className={`card assignment-card ${isCompleted ? 'assignment-card--completed' : ''} ${isSkipped ? 'assignment-card--skipped' : ''}`}
       style={{ cursor: 'pointer' }}
-      onClick={() => navigate(cardUrl)}
+      onClick={() => {
+        if (isRemoving) {
+          return;
+        }
+        navigate(cardUrl);
+      }}
     >
       <div className="assignment-card-content">
         <strong>{assignment.study_item.surface_form}</strong>

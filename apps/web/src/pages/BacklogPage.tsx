@@ -3,9 +3,10 @@ import { Link } from 'react-router-dom';
 import { type Assignment, type BacklogResponse } from '@kanjiscribe/shared';
 
 import { AssignmentList } from '../components/AssignmentList.js';
+import { LoadingState } from '../components/LoadingState.js';
 import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
-import { useBacklogDayEstimates } from '../hooks/useEstimate.js';
-import { formatJapaneseDate, formatMsEstimate, getBacklog } from '../lib/api.js';
+import { formatEstimateLabel, useBacklogDayEstimates } from '../hooks/useEstimate.js';
+import { formatJapaneseDate, getBacklog } from '../lib/api.js';
 
 export function BacklogPage() {
   const [data, setData] = useState<BacklogResponse | null>(null);
@@ -27,7 +28,7 @@ export function BacklogPage() {
   );
   const dayEstimates = useBacklogDayEstimates(dates);
 
-  const handleRemove = useArchiveRemoval(refresh, setError);
+  const { handleRemove, removingId } = useArchiveRemoval(refresh, setError);
 
   const groupedAssignments = useMemo(() => {
     const groups = new Map<string, Assignment[]>();
@@ -69,7 +70,9 @@ export function BacklogPage() {
       <h2>Backlog</h2>
       <p className="muted">All pending and skipped assignments, oldest first.</p>
       {error ? <p className="error">{error}</p> : null}
-      {groupedAssignments.length === 0 ? (
+      {data === null ? (
+        <LoadingState message="Loading backlog..." />
+      ) : groupedAssignments.length === 0 ? (
         <p className="muted">No assignments found.</p>
       ) : (
         <div className="backlog-day-list">
@@ -79,6 +82,11 @@ export function BacklogPage() {
             const completed = stats?.completed_count ?? 0;
             const total = stats?.total_assignments ?? group.assignments.length;
             const remaining = group.assignments.length;
+            const estimateState = dayEstimates[group.date];
+            const estimateLabel =
+              estimateState === undefined || estimateState.status === 'loading'
+                ? ' —'
+                : ` • ${formatEstimateLabel(estimateState)}`;
 
             const query = dayDrillQuery(
               formatJapaneseDate(group.date),
@@ -99,9 +107,7 @@ export function BacklogPage() {
                     <h3>{formatJapaneseDate(group.date)}</h3>
                     <span className="backlog-day-stats">
                       {completed}/{total} drilled, {remaining} remaining
-                      {dayEstimates[group.date] === undefined
-                        ? ' —'
-                        : ` • ${formatMsEstimate(dayEstimates[group.date]!)}`}
+                      {estimateLabel}
                     </span>
                   </button>
                   <Link className="button button-today" to={`/drill/${group.assignments[0]!.id}${query}`}>
@@ -113,6 +119,7 @@ export function BacklogPage() {
                     assignments={group.assignments}
                     getDrillQuery={() => query}
                     onRemove={handleRemove}
+                    removingId={removingId}
                   />
                 ) : null}
               </section>
