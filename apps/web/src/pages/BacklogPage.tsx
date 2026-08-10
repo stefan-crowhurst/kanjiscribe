@@ -5,6 +5,7 @@ import { type Assignment, type BacklogResponse } from '@kanjiscribe/shared';
 import { AssignmentList } from '../components/AssignmentList.js';
 import { LoadingState } from '../components/LoadingState.js';
 import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
+import { useAssignmentReorder } from '../hooks/useAssignmentReorder.js';
 import { formatEstimateLabel, useBacklogDayEstimates } from '../hooks/useEstimate.js';
 import { formatJapaneseDate, getBacklog } from '../lib/api.js';
 
@@ -56,15 +57,6 @@ export function BacklogPage() {
     });
   }
 
-  function dayDrillQuery(date: string, assignmentIds: number[]): string {
-    const params = new URLSearchParams({
-      queue_source: 'backlog',
-      queue_ids: assignmentIds.join(','),
-      queue_label: date
-    });
-    return `?${params.toString()}`;
-  }
-
   return (
     <section>
       <h2>Backlog</h2>
@@ -78,7 +70,7 @@ export function BacklogPage() {
         <div className="backlog-day-list">
           {groupedAssignments.map((group) => {
             const isExpanded = expandedDays.has(group.date);
-            const stats = data?.dayStats[group.date];
+            const stats = data.dayStats[group.date];
             const completed = stats?.completed_count ?? 0;
             const total = stats?.total_assignments ?? group.assignments.length;
             const remaining = group.assignments.length;
@@ -88,45 +80,109 @@ export function BacklogPage() {
                 ? ' —'
                 : ` • ${formatEstimateLabel(estimateState)}`;
 
-            const query = dayDrillQuery(
-              formatJapaneseDate(group.date),
-              group.assignments.map((assignment) => assignment.id)
-            );
-
             return (
-              <section key={group.date} className="backlog-day-group">
-                <div className="backlog-day-header">
-                  <button
-                    className={`backlog-day-toggle ${isExpanded ? 'backlog-day-toggle--expanded' : ''}`}
-                    onClick={() => toggleDay(group.date)}
-                    aria-expanded={isExpanded}
-                  >
-                    <span className="backlog-day-chevron" aria-hidden="true">
-                      ›
-                    </span>
-                    <h3>{formatJapaneseDate(group.date)}</h3>
-                    <span className="backlog-day-stats">
-                      {completed}/{total} drilled, {remaining} remaining
-                      {estimateLabel}
-                    </span>
-                  </button>
-                  <Link className="button button-today" to={`/drill/${group.assignments[0]!.id}${query}`}>
-                    Drill
-                  </Link>
-                </div>
-                {isExpanded ? (
-                  <AssignmentList
-                    assignments={group.assignments}
-                    getDrillQuery={() => query}
-                    onRemove={handleRemove}
-                    removingId={removingId}
-                  />
-                ) : null}
-              </section>
+              <BacklogDayGroup
+                key={group.date}
+                date={group.date}
+                initialAssignments={group.assignments}
+                completed={completed}
+                total={total}
+                remaining={remaining}
+                estimateLabel={estimateLabel}
+                isExpanded={isExpanded}
+                onToggle={() => toggleDay(group.date)}
+                onRemove={handleRemove}
+                removingId={removingId}
+                setError={setError}
+              />
             );
           })}
         </div>
       )}
     </section>
   );
+}
+
+function BacklogDayGroup({
+  date,
+  initialAssignments,
+  completed,
+  total,
+  remaining,
+  estimateLabel,
+  isExpanded,
+  onToggle,
+  onRemove,
+  removingId,
+  setError
+}: {
+  date: string;
+  initialAssignments: Assignment[];
+  completed: number;
+  total: number;
+  remaining: number;
+  estimateLabel: string;
+  isExpanded: boolean;
+  onToggle: () => void;
+  onRemove: (assignment: Assignment) => void;
+  removingId: number | null;
+  setError: (message: string | null) => void;
+}) {
+  const [assignments, setAssignments] = useState(initialAssignments);
+
+  useEffect(() => {
+    setAssignments(initialAssignments);
+  }, [initialAssignments]);
+
+  const updateAssignments = useCallback((nextAssignments: Assignment[]) => setAssignments(nextAssignments), []);
+  const { handleReorder, isReordering } = useAssignmentReorder(
+    date,
+    assignments,
+    updateAssignments,
+    setError
+  );
+  const query = dayDrillQuery(formatJapaneseDate(date), assignments.map((assignment) => assignment.id));
+
+  return (
+    <section className="backlog-day-group">
+      <div className="backlog-day-header">
+        <button
+          className={`backlog-day-toggle ${isExpanded ? 'backlog-day-toggle--expanded' : ''}`}
+          onClick={onToggle}
+          aria-expanded={isExpanded}
+        >
+          <span className="backlog-day-chevron" aria-hidden="true">
+            ›
+          </span>
+          <h3>{formatJapaneseDate(date)}</h3>
+          <span className="backlog-day-stats">
+            {completed}/{total} drilled, {remaining} remaining
+            {estimateLabel}
+          </span>
+        </button>
+        <Link className="button button-today" to={`/drill/${assignments[0]!.id}${query}`}>
+          Drill
+        </Link>
+      </div>
+      {isExpanded ? (
+        <AssignmentList
+          assignments={assignments}
+          getDrillQuery={() => query}
+          onRemove={onRemove}
+          removingId={removingId}
+          onReorder={handleReorder}
+          isReordering={isReordering}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function dayDrillQuery(date: string, assignmentIds: number[]): string {
+  const params = new URLSearchParams({
+    queue_source: 'backlog',
+    queue_ids: assignmentIds.join(','),
+    queue_label: date
+  });
+  return `?${params.toString()}`;
 }

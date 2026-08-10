@@ -107,6 +107,7 @@ export function seedAssignment(
      * used to model pre-feature rows under SUM estimate semantics.
      */
     estimated_ms?: number | null;
+    queue_position?: number | null;
   },
   db: Database = sqlite
 ): SeededAssignment {
@@ -117,9 +118,19 @@ export function seedAssignment(
   const completedAt = status === 'completed' ? ts : null;
 
   db.prepare(
-    `INSERT INTO daily_assignment (id, study_item_id, assigned_for_date, status, origin, time_spent_ms, created_at, completed_at, estimated_ms)
-     VALUES (?, ?, ?, ?, 'manual', ?, ?, ?, ?)`
-  ).run(id, opts.study_item_id, date, status, opts.time_spent_ms ?? null, ts, completedAt, opts.estimated_ms ?? null);
+    `INSERT INTO daily_assignment (id, study_item_id, assigned_for_date, status, origin, time_spent_ms, created_at, completed_at, estimated_ms, queue_position)
+     VALUES (?, ?, ?, ?, 'manual', ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    opts.study_item_id,
+    date,
+    status,
+    opts.time_spent_ms ?? null,
+    ts,
+    completedAt,
+    opts.estimated_ms ?? null,
+    opts.queue_position ?? null
+  );
 
   return { id, study_item_id: opts.study_item_id, assigned_for_date: date, status };
 }

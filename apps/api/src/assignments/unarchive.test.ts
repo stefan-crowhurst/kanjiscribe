@@ -28,6 +28,38 @@ describe('POST /assignments/:id/unarchive', () => {
     });
   });
 
+  it('clears queue_position so the restored assignment lands at the end of the day', async () => {
+    const studyItemId = seedStudyItem();
+    const restored = seedAssignment({
+      study_item_id: studyItemId,
+      status: 'archived',
+      assigned_for_date: '2024-01-01',
+      queue_position: 1
+    });
+    const existing = seedAssignment({
+      study_item_id: studyItemId,
+      status: 'pending',
+      assigned_for_date: '2024-01-01',
+      queue_position: 2
+    });
+
+    const unarchiveRes = await app.inject({
+      method: 'POST',
+      url: `/assignments/${restored.id}/unarchive`
+    });
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/assignments?date=2024-01-01'
+    });
+
+    expect(unarchiveRes.statusCode).toBe(200);
+    expect(listRes.statusCode).toBe(200);
+    expect(JSON.parse(listRes.body).assignments.map((assignment: { id: number }) => assignment.id)).toEqual([
+      existing.id,
+      restored.id
+    ]);
+  });
+
   it('rejects unarchiving a pending assignment with 409', async () => {
     const studyItemId = seedStudyItem();
     const assignment = seedAssignment({ study_item_id: studyItemId, status: 'pending' });

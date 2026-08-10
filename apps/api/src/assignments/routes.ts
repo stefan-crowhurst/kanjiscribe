@@ -1,5 +1,7 @@
 import {
+  assignmentOrderRequestSchema,
   assignmentsQuerySchema,
+  dateSchema,
   pathIdSchema,
   queueSourceSchema,
   updateAssignmentTimeSchema,
@@ -12,11 +14,12 @@ import {
 import type { FastifyInstance, FastifyReply } from 'fastify';
 
 import { sqlite } from '../db/client.js';
-import { conflict, notFound, parseOr400 } from '../http.js';
+import { badRequest, conflict, notFound, parseOr400 } from '../http.js';
 import { assignmentDetail } from './detail.js';
 import {
   archiveAssignment,
   completeAssignment,
+  reorderAssignments,
   reopenAssignment,
   skipAssignment,
   unarchiveAssignment,
@@ -89,120 +92,200 @@ export function registerAssignmentsRoutes(app: FastifyInstance): void {
     return { assignments, dayStats: Object.fromEntries(dayStatsMap) };
   });
 
-  app.get('/assignments/:id/drill', async (request, reply): Promise<DrillPayload | FastifyReply | undefined> => {
-    const id = parseOr400(pathIdSchema, (request.params as { id: string }).id, reply, 'Invalid assignment id');
-    if (id === null) {
-      return;
-    }
-
-    const queueSource = parseOr400(
-      queueSourceSchema,
-      (request.query as { queue_source?: unknown }).queue_source,
+  app.put('/assignments/:date/order', async (request, reply): Promise<FastifyReply | undefined> => {
+    const date = parseOr400(
+      dateSchema,
+      (request.params as { date: string }).date,
       reply,
-      'Invalid queue source'
+      'Invalid assignment date'
     );
-    if (queueSource === null) {
+    if (date === null) {
       return;
     }
 
-    if (rejectIfArchived(id, reply)) {
+    const parsed = parseOr400(assignmentOrderRequestSchema, request.body ?? {}, reply);
+    if (parsed === null) {
       return;
     }
 
-    const detail = assignmentDetail(sqlite, id);
-    if (detail.kind === 'not_found') {
-      return notFound(reply, detail.message);
+    const result = reorderAssignments(sqlite, date, parsed.assignment_ids);
+    if (result.kind === 'bad_request') {
+      return badRequest(reply, result.message);
     }
 
-    const queue = computeQueue(id, queueSource);
+    return reply.code(204).send();
+  });
 
-    const dayTotalRow = sqlite
-      .prepare(
-        `
+  app.get(
+    '/assignments/:id/drill',
+    async (request, reply): Promise<DrillPayload | FastifyReply | undefined> => {
+      const id = parseOr400(
+        pathIdSchema,
+        (request.params as { id: string }).id,
+        reply,
+        'Invalid assignment id'
+      );
+      if (id === null) {
+        return;
+      }
+
+      const queueSource = parseOr400(
+        queueSourceSchema,
+        (request.query as { queue_source?: unknown }).queue_source,
+        reply,
+        'Invalid queue source'
+      );
+      if (queueSource === null) {
+        return;
+      }
+
+      if (rejectIfArchived(id, reply)) {
+        return;
+      }
+
+      const detail = assignmentDetail(sqlite, id);
+      if (detail.kind === 'not_found') {
+        return notFound(reply, detail.message);
+      }
+
+      const queue = computeQueue(id, queueSource);
+
+      const dayTotalRow = sqlite
+        .prepare(
+          `
         SELECT SUM(COALESCE(time_spent_ms, 0)) AS total_time_ms
         FROM daily_assignment
         WHERE assigned_for_date = ?
         `
-      )
-      .get(detail.payload.assignment.assigned_for_date) as { total_time_ms: number | null };
+        )
+        .get(detail.payload.assignment.assigned_for_date) as { total_time_ms: number | null };
 
-    return {
-      ...detail.payload,
-      queue,
-      day_total_time_ms: dayTotalRow.total_time_ms ?? 0
-    };
-  });
-
-  app.get('/assignments/:id/view', async (request, reply): Promise<ViewPayload | FastifyReply | undefined> => {
-    const id = parseOr400(pathIdSchema, (request.params as { id: string }).id, reply, 'Invalid assignment id');
-    if (id === null) {
-      return;
+      return {
+        ...detail.payload,
+        queue,
+        day_total_time_ms: dayTotalRow.total_time_ms ?? 0
+      };
     }
+  );
 
-    if (rejectIfArchived(id, reply)) {
-      return;
+  app.get(
+    '/assignments/:id/view',
+    async (request, reply): Promise<ViewPayload | FastifyReply | undefined> => {
+      const id = parseOr400(
+        pathIdSchema,
+        (request.params as { id: string }).id,
+        reply,
+        'Invalid assignment id'
+      );
+      if (id === null) {
+        return;
+      }
+
+      if (rejectIfArchived(id, reply)) {
+        return;
+      }
+
+      const detail = assignmentDetail(sqlite, id);
+      if (detail.kind === 'not_found') {
+        return notFound(reply, detail.message);
+      }
+
+      return detail.payload;
     }
+  );
 
-    const detail = assignmentDetail(sqlite, id);
-    if (detail.kind === 'not_found') {
-      return notFound(reply, detail.message);
+  app.post(
+    '/assignments/:id/complete',
+    async (request, reply): Promise<AssignmentSummaryResponse | FastifyReply | undefined> => {
+      const id = parseOr400(
+        pathIdSchema,
+        (request.params as { id: string }).id,
+        reply,
+        'Invalid assignment id'
+      );
+      if (id === null) {
+        return;
+      }
+
+      const parsed = parseOr400(updateAssignmentTimeSchema, request.body ?? {}, reply);
+      if (parsed === null) {
+        return;
+      }
+
+      return sendLifecycleResult(reply, completeAssignment(sqlite, id, parsed.time_spent_ms));
     }
+  );
 
-    return detail.payload;
-  });
+  app.post(
+    '/assignments/:id/skip',
+    async (request, reply): Promise<AssignmentSummaryResponse | FastifyReply | undefined> => {
+      const id = parseOr400(
+        pathIdSchema,
+        (request.params as { id: string }).id,
+        reply,
+        'Invalid assignment id'
+      );
+      if (id === null) {
+        return;
+      }
 
-  app.post('/assignments/:id/complete', async (request, reply): Promise<AssignmentSummaryResponse | FastifyReply | undefined> => {
-    const id = parseOr400(pathIdSchema, (request.params as { id: string }).id, reply, 'Invalid assignment id');
-    if (id === null) {
-      return;
+      const parsed = parseOr400(updateAssignmentTimeSchema, request.body ?? {}, reply);
+      if (parsed === null) {
+        return;
+      }
+
+      return sendLifecycleResult(reply, skipAssignment(sqlite, id, parsed.time_spent_ms));
     }
+  );
 
-    const parsed = parseOr400(updateAssignmentTimeSchema, request.body ?? {}, reply);
-    if (parsed === null) {
-      return;
+  app.post(
+    '/assignments/:id/reopen',
+    async (request, reply): Promise<AssignmentSummaryResponse | FastifyReply | undefined> => {
+      const id = parseOr400(
+        pathIdSchema,
+        (request.params as { id: string }).id,
+        reply,
+        'Invalid assignment id'
+      );
+      if (id === null) {
+        return;
+      }
+
+      return sendLifecycleResult(reply, reopenAssignment(sqlite, id));
     }
+  );
 
-    return sendLifecycleResult(reply, completeAssignment(sqlite, id, parsed.time_spent_ms));
-  });
+  app.post(
+    '/assignments/:id/archive',
+    async (request, reply): Promise<AssignmentSummaryResponse | FastifyReply | undefined> => {
+      const id = parseOr400(
+        pathIdSchema,
+        (request.params as { id: string }).id,
+        reply,
+        'Invalid assignment id'
+      );
+      if (id === null) {
+        return;
+      }
 
-  app.post('/assignments/:id/skip', async (request, reply): Promise<AssignmentSummaryResponse | FastifyReply | undefined> => {
-    const id = parseOr400(pathIdSchema, (request.params as { id: string }).id, reply, 'Invalid assignment id');
-    if (id === null) {
-      return;
+      return sendLifecycleResult(reply, archiveAssignment(sqlite, id));
     }
+  );
 
-    const parsed = parseOr400(updateAssignmentTimeSchema, request.body ?? {}, reply);
-    if (parsed === null) {
-      return;
+  app.post(
+    '/assignments/:id/unarchive',
+    async (request, reply): Promise<AssignmentSummaryResponse | FastifyReply | undefined> => {
+      const id = parseOr400(
+        pathIdSchema,
+        (request.params as { id: string }).id,
+        reply,
+        'Invalid assignment id'
+      );
+      if (id === null) {
+        return;
+      }
+
+      return sendLifecycleResult(reply, unarchiveAssignment(sqlite, id));
     }
-
-    return sendLifecycleResult(reply, skipAssignment(sqlite, id, parsed.time_spent_ms));
-  });
-
-  app.post('/assignments/:id/reopen', async (request, reply): Promise<AssignmentSummaryResponse | FastifyReply | undefined> => {
-    const id = parseOr400(pathIdSchema, (request.params as { id: string }).id, reply, 'Invalid assignment id');
-    if (id === null) {
-      return;
-    }
-
-    return sendLifecycleResult(reply, reopenAssignment(sqlite, id));
-  });
-
-  app.post('/assignments/:id/archive', async (request, reply): Promise<AssignmentSummaryResponse | FastifyReply | undefined> => {
-    const id = parseOr400(pathIdSchema, (request.params as { id: string }).id, reply, 'Invalid assignment id');
-    if (id === null) {
-      return;
-    }
-
-    return sendLifecycleResult(reply, archiveAssignment(sqlite, id));
-  });
-
-  app.post('/assignments/:id/unarchive', async (request, reply): Promise<AssignmentSummaryResponse | FastifyReply | undefined> => {
-    const id = parseOr400(pathIdSchema, (request.params as { id: string }).id, reply, 'Invalid assignment id');
-    if (id === null) {
-      return;
-    }
-
-    return sendLifecycleResult(reply, unarchiveAssignment(sqlite, id));
-  });
+  );
 }

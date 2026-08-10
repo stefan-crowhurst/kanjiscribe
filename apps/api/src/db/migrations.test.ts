@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import Database from 'better-sqlite3';
 
 import { sqlite } from './client.js';
 import { runMigrationsOnDb } from './run-migrations.js';
+import { run as runQueuePositionMigration } from './sql/0007_queue_position.js';
 
 function viewExists(name: string): boolean {
   return (
@@ -46,5 +48,28 @@ describe('migrations', () => {
     ]) {
       expect(viewExists(view)).toBe(true);
     }
+  });
+
+  it('adds queue_position idempotently without backfilling existing assignments', () => {
+    const db = new Database(':memory:');
+    db.exec(`
+      CREATE TABLE daily_assignment (
+        id INTEGER PRIMARY KEY,
+        created_at TEXT NOT NULL
+      );
+      INSERT INTO daily_assignment (id, created_at)
+      VALUES (1, '2024-01-01T00:00:00.000Z');
+    `);
+
+    runQueuePositionMigration(db);
+    runQueuePositionMigration(db);
+
+    const columns = db.prepare('PRAGMA table_info(daily_assignment)').all() as Array<{ name: string }>;
+    expect(columns.map((column) => column.name)).toContain('queue_position');
+    expect(
+      db.prepare('SELECT queue_position FROM daily_assignment WHERE id = 1').get()
+    ).toEqual({ queue_position: null });
+
+    db.close();
   });
 });

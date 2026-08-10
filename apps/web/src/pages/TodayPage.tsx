@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { type Assignment, type HeatmapDay } from '@kanjiscribe/shared';
+import { isUnfinishedStatus, type Assignment, type HeatmapDay } from '@kanjiscribe/shared';
 
 import { AssignmentList } from '../components/AssignmentList.js';
 import { DeltaChip } from '../components/DeltaChip.js';
 import { LoadingState } from '../components/LoadingState.js';
 import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
+import { useAssignmentReorder } from '../hooks/useAssignmentReorder.js';
 import { formatEstimateLabel, useEstimate } from '../hooks/useEstimate.js';
-import { formatJapaneseDate, getDashboardStats, listAssignments, todayDateString } from '../lib/api.js';
+import {
+  formatJapaneseDate,
+  getDashboardStats,
+  listAssignments,
+  todayDateString
+} from '../lib/api.js';
 
 type DayStats = Pick<HeatmapDay, 'total_assignments' | 'completed_count' | 'pending_count'>;
 
@@ -43,15 +49,26 @@ export function TodayPage() {
   }, []);
 
   useEffect(() => {
-    refresh().catch((err) => setError(err instanceof Error ? err.message : 'Failed to load today assignments'));
+    refresh().catch((err) =>
+      setError(err instanceof Error ? err.message : 'Failed to load today assignments')
+    );
   }, [refresh]);
 
   const { handleRemove, removingId } = useArchiveRemoval(refresh, setError);
+  const updateAssignments = useCallback(
+    (nextAssignments: Assignment[]) => setAssignments(nextAssignments),
+    []
+  );
+  const { handleReorder, isReordering } = useAssignmentReorder(
+    todayDateString(),
+    assignments ?? [],
+    updateAssignments,
+    setError
+  );
 
   const completed = dayStats?.completed_count ?? 0;
   const total = dayStats?.total_assignments ?? assignments?.length ?? 0;
-  const unfinishedAssignments =
-    assignments?.filter((a) => a.status === 'pending' || a.status === 'skipped') ?? [];
+  const unfinishedAssignments = assignments?.filter((a) => isUnfinishedStatus(a.status)) ?? [];
   const remaining = unfinishedAssignments.length;
   const countsKnown = dayStats !== null || assignments !== null;
 
@@ -71,12 +88,13 @@ export function TodayPage() {
           ) : (
             <LoadingState message="Loading today's stats..." />
           )}
-          <p className="muted">
-            Estimate: {todayEstimateLabel}
-          </p>
+          <p className="muted">Estimate: {todayEstimateLabel}</p>
         </div>
         {firstUnfinishedId ? (
-          <Link className="button button-today" to={`/drill/${firstUnfinishedId}?queue_source=today`}>
+          <Link
+            className="button button-today"
+            to={`/drill/${firstUnfinishedId}?queue_source=today`}
+          >
             Drill
           </Link>
         ) : null}
@@ -96,6 +114,8 @@ export function TodayPage() {
           variant="today"
           onRemove={handleRemove}
           removingId={removingId}
+          onReorder={handleReorder}
+          isReordering={isReordering}
         />
       )}
     </section>

@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import {
   assignmentListResponseSchema,
+  assignmentOrderRequestSchema,
   assignmentSummaryResponseSchema,
   assignmentsQuerySchema,
   backlogResponseSchema,
@@ -51,7 +52,8 @@ const envConfig = envConfigSchema.parse({
   VITE_API_BASE: import.meta.env.VITE_API_BASE
 });
 
-export const API_BASE = envConfig.VITE_API_BASE ?? getDefaultApiBase(envConfig.KANJISCRIBE_API_PORT);
+export const API_BASE =
+  envConfig.VITE_API_BASE ?? getDefaultApiBase(envConfig.KANJISCRIBE_API_PORT);
 
 export function apiAssetUrl(path: string): string {
   if (path.startsWith('http://') || path.startsWith('https://')) {
@@ -66,12 +68,50 @@ export function apiAssetUrl(path: string): string {
  * or body is built and before any request is sent. Valid inputs are returned
  * as the schema's typed output.
  */
-function validateRequestInput<TSchema extends z.ZodTypeAny>(schema: TSchema, value: unknown): z.infer<TSchema> {
+function validateRequestInput<TSchema extends z.ZodTypeAny>(
+  schema: TSchema,
+  value: unknown
+): z.infer<TSchema> {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
     throw new Error(parsed.error.issues[0]?.message ?? 'Invalid request input');
   }
   return parsed.data;
+}
+
+/**
+ * Content-type and caller headers for a request, shared by apiRequest and
+ * apiRequestNoContent: Content-Type is only set when there is a body.
+ */
+function mergeHeaders(options?: RequestInit): Record<string, string> {
+  const headers: Record<string, string> = {};
+
+  if (options?.body) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  if (options?.headers) {
+    Object.entries(options.headers).forEach(([key, value]) => {
+      if (typeof value === 'string') {
+        headers[key] = value;
+      }
+    });
+  }
+
+  return headers;
+}
+
+/**
+ * Parse a non-2xx response's error envelope through the shared error schema
+ * and reject with a useful message (ADR-0006); a 2xx response returns.
+ */
+async function throwIfNotOk(response: Response): Promise<void> {
+  if (!response.ok) {
+    const body: unknown = await response.json().catch(() => null);
+    const parsed = errorResponseSchema.safeParse(body);
+    const message = parsed.success ? parsed.data.error : undefined;
+    throw new Error(message ?? `Request failed (${response.status})`);
+  }
 }
 
 /**
@@ -84,33 +124,12 @@ async function apiRequest<T extends z.ZodTypeAny>(
   path: string,
   options?: RequestInit
 ): Promise<z.infer<T>> {
-  const headers: Record<string, string> = {};
-
-  // Only set Content-Type if there's a body to send
-  if (options?.body) {
-    headers['Content-Type'] = 'application/json';
-  }
-
-  // Merge any additional headers from options
-  if (options?.headers) {
-    Object.entries(options.headers).forEach(([key, value]) => {
-      if (typeof value === 'string') {
-        headers[key] = value;
-      }
-    });
-  }
-
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
-    headers
+    headers: mergeHeaders(options)
   });
 
-  if (!response.ok) {
-    const body: unknown = await response.json().catch(() => null);
-    const parsed = errorResponseSchema.safeParse(body);
-    const message = parsed.success ? parsed.data.error : undefined;
-    throw new Error(message ?? `Request failed (${response.status})`);
-  }
+  await throwIfNotOk(response);
 
   const data: unknown = await response.json();
   const parsed = schema.safeParse(data);
@@ -118,6 +137,18 @@ async function apiRequest<T extends z.ZodTypeAny>(
     throw new Error(`Invalid response from ${path}: ${parsed.error.message}`);
   }
   return parsed.data;
+}
+
+/**
+ * Fetch an endpoint that returns no response body (e.g. a 204). Success is a
+ * no-op; errors parse through the same shared error envelope as apiRequest.
+ */
+async function apiRequestNoContent(path: string, options?: RequestInit): Promise<void> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: mergeHeaders(options)
+  });
+  await throwIfNotOk(response);
 }
 
 export async function listAssignments(
@@ -132,14 +163,31 @@ export async function listAssignments(
     query.set('status', status);
   }
   const queryString = query.toString();
-  return apiRequest(assignmentListResponseSchema, `/assignments${queryString ? `?${queryString}` : ''}`);
+  return apiRequest(
+    assignmentListResponseSchema,
+    `/assignments${queryString ? `?${queryString}` : ''}`
+  );
+}
+
+export async function reorderAssignments(date: string, assignmentIds: number[]): Promise<void> {
+  const validatedDate = validateRequestInput(dateSchema, date);
+  const payload = validateRequestInput(assignmentOrderRequestSchema, {
+    assignment_ids: assignmentIds
+  });
+  await apiRequestNoContent(`/assignments/${validatedDate}/order`, {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
 }
 
 export async function getBacklog(): Promise<BacklogResponse> {
   return apiRequest(backlogResponseSchema, '/assignments/backlog');
 }
 
-export async function getDrillPayload(assignmentId: number, queueSource?: string): Promise<DrillPayload> {
+export async function getDrillPayload(
+  assignmentId: number,
+  queueSource?: string
+): Promise<DrillPayload> {
   const source = validateRequestInput(queueSourceSchema, queueSource);
   const query = source ? `?queue_source=${encodeURIComponent(source)}` : '';
   return apiRequest(drillPayloadSchema, `/assignments/${assignmentId}/drill${query}`);
@@ -149,14 +197,20 @@ export async function getViewPayload(assignmentId: number): Promise<ViewPayload>
   return apiRequest(viewPayloadSchema, `/assignments/${assignmentId}/view`);
 }
 
-export async function completeAssignment(id: number, timeSpentMs: number): Promise<AssignmentSummaryResponse> {
+export async function completeAssignment(
+  id: number,
+  timeSpentMs: number
+): Promise<AssignmentSummaryResponse> {
   return apiRequest(assignmentSummaryResponseSchema, `/assignments/${id}/complete`, {
     method: 'POST',
     body: JSON.stringify({ time_spent_ms: timeSpentMs })
   });
 }
 
-export async function skipAssignment(id: number, timeSpentMs: number): Promise<AssignmentSummaryResponse> {
+export async function skipAssignment(
+  id: number,
+  timeSpentMs: number
+): Promise<AssignmentSummaryResponse> {
   return apiRequest(assignmentSummaryResponseSchema, `/assignments/${id}/skip`, {
     method: 'POST',
     body: JSON.stringify({ time_spent_ms: timeSpentMs })
@@ -185,7 +239,10 @@ export async function getDashboardStats(from?: string, to?: string): Promise<Das
     query.set('to', toDate);
   }
   const queryString = query.toString();
-  return apiRequest(dashboardResponseSchema, `/stats/dashboard${queryString ? `?${queryString}` : ''}`);
+  return apiRequest(
+    dashboardResponseSchema,
+    `/stats/dashboard${queryString ? `?${queryString}` : ''}`
+  );
 }
 
 export async function getTopWords(): Promise<TopWordsResponse> {
@@ -212,12 +269,18 @@ export async function getBacklogDaysEstimate(): Promise<number> {
 
 export async function getBacklogDayEstimate(date: string): Promise<number> {
   const validatedDate = validateRequestInput(dateSchema, date);
-  const response = await apiRequest(estimatesResponseSchema, `/estimates/backlog-day?date=${validatedDate}`);
+  const response = await apiRequest(
+    estimatesResponseSchema,
+    `/estimates/backlog-day?date=${validatedDate}`
+  );
   return response.estimated_remaining_ms;
 }
 
 export async function searchDictionary(query: string): Promise<DictionarySearchResponse> {
-  return apiRequest(dictionarySearchResponseSchema, `/dictionary/search?q=${encodeURIComponent(query)}`);
+  return apiRequest(
+    dictionarySearchResponseSchema,
+    `/dictionary/search?q=${encodeURIComponent(query)}`
+  );
 }
 
 export async function intakeStudyItem(payload: IntakeRequest): Promise<IntakeResponse> {
