@@ -194,17 +194,15 @@ export function unarchiveAssignment(db: Database, id: number): AssignmentLifecyc
     return { kind: 'conflict', message: 'Only archived assignments can be unarchived' };
   }
 
-  const transaction = db.transaction(() => {
-    db.prepare(
-      `
-      UPDATE daily_assignment
-      SET status = 'pending', completed_at = NULL, time_spent_ms = NULL, queue_position = NULL
-      WHERE id = ?
-      `
-    ).run(id);
-  });
-
-  transaction();
+  // queue_position is cleared so the restored card lands at the end of the
+  // day's queue (ADR 0008): new arrivals sort after positioned rows.
+  db.prepare(
+    `
+    UPDATE daily_assignment
+    SET status = 'pending', completed_at = NULL, time_spent_ms = NULL, queue_position = NULL
+    WHERE id = ?
+    `
+  ).run(id);
 
   return { kind: 'ok', assignment: fetchAssignment(db, id)! };
 }

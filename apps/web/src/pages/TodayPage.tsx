@@ -55,14 +55,14 @@ export function TodayPage() {
   }, [refresh]);
 
   const { handleRemove, removingId } = useArchiveRemoval(refresh, setError);
-  const updateAssignments = useCallback(
+  const applyOptimisticReorder = useCallback(
     (nextAssignments: Assignment[]) => setAssignments(nextAssignments),
     []
   );
   const { handleReorder, isReordering } = useAssignmentReorder(
     todayDateString(),
     assignments ?? [],
-    updateAssignments,
+    applyOptimisticReorder,
     setError
   );
 

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import type { Assignment } from '@kanjiscribe/shared';
-import { interleaveUnfinished, isUnfinishedStatus } from '@kanjiscribe/shared';
+import { isUnfinishedStatus, reorderOnDrop } from '@kanjiscribe/shared';
 import {
   DndContext,
   DragOverlay,
@@ -42,47 +42,10 @@ export function ReorderableAssignmentList({
       return;
     }
 
-    const activeIndex = findAssignmentIndex(assignments, active.id);
-    const overIndex = findAssignmentIndex(assignments, over.id);
-    if (activeIndex < 0 || overIndex < 0 || !isUnfinishedStatus(assignments[activeIndex]!.status)) {
-      return;
+    const reordered = reorderOnDrop(assignments, Number(active.id), Number(over.id));
+    if (reordered) {
+      onReorder(reordered);
     }
-
-    const unfinishedAssignments = assignments.filter((assignment) =>
-      isUnfinishedStatus(assignment.status)
-    );
-    const activeUnfinishedIndex = unfinishedAssignments.findIndex(
-      (assignment) => assignment.id === assignments[activeIndex]!.id
-    );
-    let targetUnfinishedIndex: number;
-
-    if (isUnfinishedStatus(assignments[overIndex]!.status)) {
-      targetUnfinishedIndex = unfinishedAssignments.findIndex(
-        (assignment) => assignment.id === assignments[overIndex]!.id
-      );
-    } else {
-      const unfinishedBeforeAnchor = assignments
-        .slice(0, overIndex)
-        .filter((assignment) => isUnfinishedStatus(assignment.status)).length;
-      // Dropping onto a completed anchor places the dragged assignment on the
-      // far side of it: below when dragged down from above, above when
-      // dragged up from below — the anchored merge (ADR 0008).
-      const draggedFromAbove = activeIndex < overIndex;
-      targetUnfinishedIndex = draggedFromAbove
-        ? unfinishedBeforeAnchor
-        : Math.max(0, unfinishedBeforeAnchor - 1);
-    }
-
-    if (activeUnfinishedIndex < 0 || activeUnfinishedIndex === targetUnfinishedIndex) {
-      return;
-    }
-
-    const reorderedUnfinished = arrayMove(
-      unfinishedAssignments,
-      activeUnfinishedIndex,
-      targetUnfinishedIndex
-    );
-    onReorder(interleaveUnfinished(assignments, reorderedUnfinished));
   }
 
   const activeAssignment =
@@ -167,15 +130,4 @@ export function AssignmentDragHandle({
       </span>
     </button>
   );
-}
-
-function findAssignmentIndex(assignments: Assignment[], id: UniqueIdentifier): number {
-  return assignments.findIndex((assignment) => assignment.id.toString() === id.toString());
-}
-
-function arrayMove<T>(items: T[], from: number, to: number): T[] {
-  const next = [...items];
-  const [item] = next.splice(from, 1);
-  next.splice(to, 0, item!);
-  return next;
 }

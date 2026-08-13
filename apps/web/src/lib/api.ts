@@ -16,6 +16,7 @@ import {
   estimatesResponseSchema,
   intakeRequestSchema,
   intakeResponseSchema,
+  noContentResponseSchema,
   queueSourceSchema,
   slowestWordsResponseSchema,
   topKanjiResponseSchema,
@@ -140,15 +141,28 @@ async function apiRequest<T extends z.ZodTypeAny>(
 }
 
 /**
- * Fetch an endpoint that returns no response body (e.g. a 204). Success is a
- * no-op; errors parse through the same shared error envelope as apiRequest.
+ * Fetch a body-less endpoint (e.g. a 204) and validate the empty response
+ * through `schema` (ADR-0006): the shared contract for a no-content success
+ * is `noContentResponseSchema`; a response that fails the schema rejects
+ * with an error naming the endpoint, never a silent pass-through.
  */
-async function apiRequestNoContent(path: string, options?: RequestInit): Promise<void> {
+async function apiRequestNoContent(
+  path: string,
+  options?: RequestInit,
+  schema: z.ZodTypeAny = noContentResponseSchema
+): Promise<void> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: mergeHeaders(options)
   });
+
   await throwIfNotOk(response);
+
+  const body = await response.text();
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    throw new Error(`Invalid response from ${path}: ${parsed.error.message}`);
+  }
 }
 
 export async function listAssignments(
@@ -174,10 +188,14 @@ export async function reorderAssignments(date: string, assignmentIds: number[]):
   const payload = validateRequestInput(assignmentOrderRequestSchema, {
     assignment_ids: assignmentIds
   });
-  await apiRequestNoContent(`/assignments/${validatedDate}/order`, {
-    method: 'PUT',
-    body: JSON.stringify(payload)
-  });
+  await apiRequestNoContent(
+    `/assignments/${validatedDate}/order`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    },
+    noContentResponseSchema
+  );
 }
 
 export async function getBacklog(): Promise<BacklogResponse> {

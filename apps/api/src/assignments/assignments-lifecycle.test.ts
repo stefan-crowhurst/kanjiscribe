@@ -346,7 +346,7 @@ describe('assignment lifecycle routes preserve queue positions', () => {
       assigned_for_date: '2024-01-01',
       queue_position: 1
     });
-    const skipped = seedAssignment({
+    const skipCandidate = seedAssignment({
       study_item_id: studyItemId,
       status: 'pending',
       assigned_for_date: '2024-01-01',
@@ -359,7 +359,7 @@ describe('assignment lifecycle routes preserve queue positions', () => {
     });
     const skipRes = await app.inject({
       method: 'POST',
-      url: `/assignments/${skipped.id}/skip`
+      url: `/assignments/${skipCandidate.id}/skip`
     });
     const reopenRes = await app.inject({
       method: 'POST',
@@ -376,7 +376,7 @@ describe('assignment lifecycle routes preserve queue positions', () => {
     expect(listRes.statusCode).toBe(200);
     expect(JSON.parse(listRes.body).assignments.map((assignment: { id: number }) => assignment.id)).toEqual([
       pending.id,
-      skipped.id,
+      skipCandidate.id,
       completed.id
     ]);
   });

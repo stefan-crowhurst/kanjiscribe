@@ -134,11 +134,11 @@ function BacklogDayGroup({
     setAssignments(initialAssignments);
   }, [initialAssignments]);
 
-  const updateAssignments = useCallback((nextAssignments: Assignment[]) => setAssignments(nextAssignments), []);
+  const applyOptimisticReorder = useCallback((nextAssignments: Assignment[]) => setAssignments(nextAssignments), []);
   const { handleReorder, isReordering } = useAssignmentReorder(
     date,
     assignments,
-    updateAssignments,
+    applyOptimisticReorder,
     setError
   );
   const query = dayDrillQuery(formatJapaneseDate(date), assignments.map((assignment) => assignment.id));

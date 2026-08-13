@@ -56,6 +56,13 @@ export const assignmentListResponseSchema = z.object({
 
 export type AssignmentListResponse = z.infer<typeof assignmentListResponseSchema>;
 
+/**
+ * No-content response — the shared contract for body-less endpoints
+ * (`PUT /assignments/:date/order` returns 204). The web validates the empty
+ * response body through this schema at its client seam (ADR-0006).
+ */
+export const noContentResponseSchema = z.literal('');
+
 const backlogDayStatsSchema = z.object({
   date: dateSchema,
   total_assignments: z.number().int().min(0),

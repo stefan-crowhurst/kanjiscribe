@@ -5,9 +5,9 @@ import { isUnfinishedStatus } from '@kanjiscribe/shared';
 import { reorderAssignments } from '../lib/api.js';
 
 export function useAssignmentReorder(
-  date: string,
+  date: string | undefined,
   assignments: Assignment[],
-  onOptimisticUpdate: (assignments: Assignment[]) => void,
+  onOptimisticReorder: (assignments: Assignment[]) => void,
   setError: (message: string | null) => void
 ): {
   handleReorder: (assignments: Assignment[]) => void;
@@ -17,12 +17,12 @@ export function useAssignmentReorder(
 
   const handleReorder = useCallback(
     (nextAssignments: Assignment[]) => {
-      if (isReordering) {
+      if (!date || isReordering) {
         return;
       }
 
       const previousAssignments = assignments;
-      onOptimisticUpdate(nextAssignments);
+      onOptimisticReorder(nextAssignments);
       setIsReordering(true);
 
       reorderAssignments(
@@ -32,12 +32,12 @@ export function useAssignmentReorder(
           .map((assignment) => assignment.id)
       )
         .catch((err: unknown) => {
-          onOptimisticUpdate(previousAssignments);
+          onOptimisticReorder(previousAssignments);
           setError(err instanceof Error ? err.message : 'Failed to reorder assignments');
         })
         .finally(() => setIsReordering(false));
     },
-    [assignments, date, isReordering, onOptimisticUpdate, setError]
+    [assignments, date, isReordering, onOptimisticReorder, setError]
   );
 
   return { handleReorder, isReordering };

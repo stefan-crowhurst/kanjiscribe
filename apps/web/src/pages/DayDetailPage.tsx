@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import {
   dateSchema,
   interleaveUnfinished,
@@ -8,11 +8,7 @@ import {
   type HeatmapDay
 } from '@kanjiscribe/shared';
 
-import {
-  AssignmentCardActions,
-  AssignmentCardGrabber,
-  AssignmentCardPreview
-} from '../components/AssignmentCard.js';
+import { AssignmentCard, AssignmentCardPreview } from '../components/AssignmentCard.js';
 import { DeltaChip } from '../components/DeltaChip.js';
 import {
   ReorderableAssignmentList,
@@ -71,7 +67,7 @@ export function DayDetailPage() {
     [assignments]
   );
 
-  const updateRemainingAssignments = useCallback((nextRemaining: Assignment[]) => {
+  const applyOptimisticReorder = useCallback((nextRemaining: Assignment[]) => {
     setAssignments((current) => {
       if (!current) {
         return current;
@@ -81,9 +77,9 @@ export function DayDetailPage() {
   }, []);
 
   const { handleReorder, isReordering } = useAssignmentReorder(
-    date ?? '',
+    date,
     remainingAssignments,
-    updateRemainingAssignments,
+    applyOptimisticReorder,
     setError
   );
 
@@ -201,9 +197,7 @@ function DayAssignmentCard({
   isReordering?: boolean;
   sortable?: SortableAssignment;
 }) {
-  const navigate = useNavigate();
   const isCompleted = assignment.status === 'completed';
-  const isRemoving = assignment.id === removingId;
 
   const viewUrl =
     allIds && allIds.length > 0
@@ -213,34 +207,15 @@ function DayAssignmentCard({
   const cardUrl = isCompleted ? viewUrl : drillUrl;
 
   return (
-    <article
-      ref={sortable?.setNodeRef}
-      className={`card assignment-card ${isCompleted ? 'assignment-card--completed' : ''} ${sortable?.isDragging ? 'assignment-card--dragging' : ''}`}
-      style={{
-        cursor: 'pointer',
-        transform:
-          !isCompleted && sortable?.transform
-            ? `translate3d(${sortable.transform.x}px, ${sortable.transform.y}px, 0)`
-            : undefined,
-        transition: sortable?.transition
-      }}
-      onClick={() => {
-        if (isRemoving) {
-          return;
-        }
-        navigate(cardUrl);
-      }}
-    >
-      <AssignmentCardGrabber
-        assignment={assignment}
-        sortable={sortable}
-        isReordering={isReordering}
-      />
-      <div className="assignment-card-content">
-        <strong>{assignment.study_item.surface_form}</strong>
-        <p className="kana">{assignment.study_item.selected_reading}</p>
-        <p>{assignment.study_item.first_gloss ?? 'No gloss available'}</p>
-        <small>
+    <AssignmentCard
+      assignment={assignment}
+      cardUrl={cardUrl}
+      onRemove={onRemove}
+      removingId={removingId}
+      isReordering={isReordering}
+      sortable={sortable}
+      meta={
+        <>
           {isCompleted && assignment.time_spent_ms !== null && (
             <span>
               Time: {formatMs(assignment.time_spent_ms)}
@@ -254,9 +229,8 @@ function DayAssignmentCard({
             </span>
           )}
           {assignment.status}
-        </small>
-      </div>
-      <AssignmentCardActions assignment={assignment} onRemove={onRemove} removingId={removingId} />
-    </article>
+        </>
+      }
+    />
   );
 }
