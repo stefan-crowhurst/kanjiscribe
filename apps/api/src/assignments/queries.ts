@@ -1,15 +1,52 @@
-import type { Assignment, AssignmentOrigin, AssignmentStatus, DrillQueue } from '@kanjiscribe/shared';
+import type {
+  Assignment,
+  AssignmentOrigin,
+  AssignmentStatus,
+  DrillQueue
+} from '@kanjiscribe/shared';
+import type { Database } from 'better-sqlite3';
 
 import { sqlite } from '../db/client.js';
 
+export type DayAssignmentOrder = {
+  id: number;
+  status: AssignmentStatus;
+};
+
+/**
+ * The within-day ordering key (ADR 0008): arranged position first, `NULL`
+ * (never-arranged) rows last, then insertion order. Shared by the day-order
+ * fetch, the list views, and both drill-queue sources. Callers in multi-table
+ * queries pass their table alias (`da.`) to keep `created_at` unambiguous.
+ */
+const withinDayOrderSql = (alias = '') =>
+  `${alias}queue_position IS NULL ASC, ${alias}queue_position ASC, ${alias}created_at ASC`;
+
+export function dayAssignmentOrderRows(db: Database, date: string): DayAssignmentOrder[] {
+  return db
+    .prepare(
+      `
+      SELECT id, status
+      FROM daily_assignment
+      WHERE assigned_for_date = ? AND status != 'archived'
+      ORDER BY ${withinDayOrderSql()}
+      `
+    )
+    .all(date) as DayAssignmentOrder[];
+}
+
 export function assignmentStatusById(id: number): AssignmentStatus | undefined {
-  const row = sqlite
-    .prepare(`SELECT status FROM daily_assignment WHERE id = ?`)
-    .get(id) as { status: AssignmentStatus } | undefined;
+  const row = sqlite.prepare(`SELECT status FROM daily_assignment WHERE id = ?`).get(id) as
+    | { status: AssignmentStatus }
+    | undefined;
   return row?.status;
 }
 
-export function listAssignments(params: { status?: string; date?: string; backlogOnly?: boolean }): Assignment[] {
+export function listAssignments(params: {
+  status?: string;
+  date?: string;
+  backlogOnly?: boolean;
+}): Assignment[] {
   const where: string[] = [];
   const values: unknown[] = [];
 
@@ -33,7 +70,7 @@ export function listAssignments(params: { status?: string; date?: string; backlo
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const orderSql = 'ORDER BY da.assigned_for_date ASC, da.created_at ASC';
+  const orderSql = `ORDER BY da.assigned_for_date ASC, ${withinDayOrderSql('da.')}`;
 
   const rows = sqlite
     .prepare(
@@ -111,7 +148,7 @@ export function computeQueue(assignmentId: number, queueSource?: 'today' | 'back
           SELECT id
           FROM daily_assignment
           WHERE status != 'archived' AND assigned_for_date = ?
-          ORDER BY created_at ASC
+      ORDER BY ${withinDayOrderSql()}
           `
         )
         .all(assignmentMeta.assigned_for_date) as Array<{ id: number }>;
@@ -123,7 +160,7 @@ export function computeQueue(assignmentId: number, queueSource?: 'today' | 'back
         SELECT id
         FROM daily_assignment
         WHERE status IN ('pending', 'skipped', 'completed')
-        ORDER BY assigned_for_date ASC, created_at ASC
+         ORDER BY assigned_for_date ASC, ${withinDayOrderSql()}
         `
       )
       .all() as Array<{ id: number }>;

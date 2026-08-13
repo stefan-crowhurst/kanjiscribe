@@ -7,6 +7,7 @@ import {
   skipAssignment,
   unarchiveAssignment
 } from './lifecycle.js';
+import { app } from '../server.js';
 import { sqlite } from '../test-setup.js';
 import {
   resetCounters,
@@ -321,5 +322,62 @@ describe('unarchiveAssignment', () => {
       kind: 'conflict',
       message: 'Only archived assignments can be unarchived'
     });
+  });
+});
+
+describe('assignment lifecycle routes preserve queue positions', () => {
+  beforeEach(() => {
+    resetDb();
+    resetCounters();
+  });
+
+  it('complete, skip, and reopen leave the Day\'s queue order unchanged', async () => {
+    const studyItemId = seedStudyItem();
+    const completed = seedAssignment({
+      study_item_id: studyItemId,
+      status: 'completed',
+      assigned_for_date: '2024-01-01',
+      queue_position: 3,
+      time_spent_ms: 1000
+    });
+    const pending = seedAssignment({
+      study_item_id: studyItemId,
+      status: 'pending',
+      assigned_for_date: '2024-01-01',
+      queue_position: 1
+    });
+    const skipCandidate = seedAssignment({
+      study_item_id: studyItemId,
+      status: 'pending',
+      assigned_for_date: '2024-01-01',
+      queue_position: 2
+    });
+
+    const completeRes = await app.inject({
+      method: 'POST',
+      url: `/assignments/${pending.id}/complete`
+    });
+    const skipRes = await app.inject({
+      method: 'POST',
+      url: `/assignments/${skipCandidate.id}/skip`
+    });
+    const reopenRes = await app.inject({
+      method: 'POST',
+      url: `/assignments/${completed.id}/reopen`
+    });
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/assignments?date=2024-01-01'
+    });
+
+    expect(completeRes.statusCode).toBe(200);
+    expect(skipRes.statusCode).toBe(200);
+    expect(reopenRes.statusCode).toBe(200);
+    expect(listRes.statusCode).toBe(200);
+    expect(JSON.parse(listRes.body).assignments.map((assignment: { id: number }) => assignment.id)).toEqual([
+      pending.id,
+      skipCandidate.id,
+      completed.id
+    ]);
   });
 });

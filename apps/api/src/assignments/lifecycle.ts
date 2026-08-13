@@ -1,4 +1,5 @@
 import type { AssignmentSummary, AssignmentStatus } from '@kanjiscribe/shared';
+import { interleaveUnfinished, isUnfinishedStatus } from '@kanjiscribe/shared';
 import type { Database } from 'better-sqlite3';
 
 import {
@@ -6,16 +7,19 @@ import {
   writeKanjiAttributionForAssignment
 } from '../attribution.js';
 import { nowIso } from '../config.js';
+import { dayAssignmentOrderRows } from './queries.js';
 
 export type AssignmentLifecycleResult =
   | { kind: 'ok'; assignment: AssignmentSummary }
   | { kind: 'not_found' }
   | { kind: 'conflict'; message: string };
 
+export type AssignmentReorderResult = { kind: 'ok' } | { kind: 'bad_request'; message: string };
+
 function fetchStatus(db: Database, id: number): AssignmentStatus | undefined {
-  const row = db
-    .prepare(`SELECT status FROM daily_assignment WHERE id = ?`)
-    .get(id) as { status: AssignmentStatus } | undefined;
+  const row = db.prepare(`SELECT status FROM daily_assignment WHERE id = ?`).get(id) as
+    | { status: AssignmentStatus }
+    | undefined;
   return row?.status;
 }
 
@@ -190,13 +194,66 @@ export function unarchiveAssignment(db: Database, id: number): AssignmentLifecyc
     return { kind: 'conflict', message: 'Only archived assignments can be unarchived' };
   }
 
+  // queue_position is cleared so the restored card lands at the end of the
+  // day's queue (ADR 0008): new arrivals sort after positioned rows.
   db.prepare(
     `
     UPDATE daily_assignment
-    SET status = 'pending', completed_at = NULL, time_spent_ms = NULL
+    SET status = 'pending', completed_at = NULL, time_spent_ms = NULL, queue_position = NULL
     WHERE id = ?
     `
   ).run(id);
 
   return { kind: 'ok', assignment: fetchAssignment(db, id)! };
+}
+
+export function reorderAssignments(
+  db: Database,
+  date: string,
+  assignmentIds: number[]
+): AssignmentReorderResult {
+  const transaction = db.transaction((): AssignmentReorderResult => {
+    const assignments = dayAssignmentOrderRows(db, date);
+
+    if (assignments.length === 0) {
+      return { kind: 'bad_request', message: 'No assignments found for date' };
+    }
+
+    const reorderable = assignments.filter((assignment) => isUnfinishedStatus(assignment.status));
+
+    if (reorderable.length === 0) {
+      return { kind: 'bad_request', message: 'No unfinished assignments for date' };
+    }
+
+    const assignmentIdSet = new Set(assignmentIds);
+    const reorderableIdSet = new Set(reorderable.map((assignment) => assignment.id));
+
+    if (
+      assignmentIdSet.size !== assignmentIds.length ||
+      assignmentIdSet.size !== reorderableIdSet.size ||
+      assignmentIds.some((id) => !reorderableIdSet.has(id))
+    ) {
+      return {
+        kind: 'bad_request',
+        message: 'Assignment ids must match the day’s unfinished assignments'
+      };
+    }
+
+    const reorderableById = new Map(reorderable.map((assignment) => [assignment.id, assignment]));
+    const orderedRows = interleaveUnfinished(
+      assignments,
+      assignmentIds.map((id) => reorderableById.get(id)!)
+    );
+
+    const updatePosition = db.prepare(
+      `UPDATE daily_assignment SET queue_position = ? WHERE id = ? AND assigned_for_date = ?`
+    );
+    orderedRows.forEach((row, index) => {
+      updatePosition.run(index + 1, row.id, date);
+    });
+
+    return { kind: 'ok' };
+  });
+
+  return transaction();
 }

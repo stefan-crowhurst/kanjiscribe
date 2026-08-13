@@ -1,10 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { dateSchema, type Assignment, type HeatmapDay } from '@kanjiscribe/shared';
+import { Link, useParams } from 'react-router-dom';
+import {
+  dateSchema,
+  interleaveUnfinished,
+  isUnfinishedStatus,
+  type Assignment,
+  type HeatmapDay
+} from '@kanjiscribe/shared';
 
+import { AssignmentCard, AssignmentCardPreview } from '../components/AssignmentCard.js';
 import { DeltaChip } from '../components/DeltaChip.js';
-import { RemoveButton } from '../components/RemoveButton.js';
+import {
+  ReorderableAssignmentList,
+  type SortableAssignment
+} from '../components/ReorderableAssignmentList.js';
 import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
+import { useAssignmentReorder } from '../hooks/useAssignmentReorder.js';
 import { formatMs, getDashboardStats, listAssignments } from '../lib/api.js';
 
 export function DayDetailPage() {
@@ -37,43 +48,39 @@ export function DayDetailPage() {
   }, [date]);
 
   useEffect(() => {
-    refresh().catch((err) => setError(err instanceof Error ? err.message : 'Failed to load day details'));
+    refresh().catch((err) =>
+      setError(err instanceof Error ? err.message : 'Failed to load day details')
+    );
   }, [refresh]);
 
   const { handleRemove, removingId } = useArchiveRemoval(refresh, setError);
 
-  const sortedAssignments = useMemo(() => {
-    if (!assignments) return [];
-    return [...assignments].sort((a, b) => {
-      if (a.status === 'completed' && b.status !== 'completed') return -1;
-      if (a.status !== 'completed' && b.status === 'completed') return 1;
-      return 0;
-    });
-  }, [assignments]);
-
-  const completedAssignments = useMemo(() => 
-    sortedAssignments.filter((a) => a.status === 'completed'),
-    [sortedAssignments]
+  const completedAssignments = useMemo(
+    () => (assignments ?? []).filter((a) => a.status === 'completed'),
+    [assignments]
   );
 
-  const pendingAssignments = useMemo(() => 
-    sortedAssignments.filter((a) => a.status === 'pending'),
-    [sortedAssignments]
-  );
-
-  const skippedAssignments = useMemo(() => 
-    sortedAssignments.filter((a) => a.status === 'skipped'),
-    [sortedAssignments]
-  );
-
-  const completedIds = useMemo(() => 
-    completedAssignments.map((a) => a.id),
-    [completedAssignments]
-  );
+  const completedIds = useMemo(() => completedAssignments.map((a) => a.id), [completedAssignments]);
 
   const remainingAssignments = useMemo(
-    () => [...pendingAssignments, ...skippedAssignments],
-    [pendingAssignments, skippedAssignments]
+    () => (assignments ?? []).filter((a) => isUnfinishedStatus(a.status)),
+    [assignments]
+  );
+
+  const applyOptimisticReorder = useCallback((nextRemaining: Assignment[]) => {
+    setAssignments((current) => {
+      if (!current) {
+        return current;
+      }
+      return interleaveUnfinished(current, nextRemaining);
+    });
+  }, []);
+
+  const { handleReorder, isReordering } = useAssignmentReorder(
+    date,
+    remainingAssignments,
+    applyOptimisticReorder,
+    setError
   );
 
   if (error) {
@@ -99,12 +106,17 @@ export function DayDetailPage() {
         <div>
           <h2>{formatDate(date!)}</h2>
           <p className="muted">
-            {daySummary.completed_count}/{daySummary.total_assignments} completed, {remainingAssignments.length} remaining
+            {daySummary.completed_count}/{daySummary.total_assignments} completed,{' '}
+            {remainingAssignments.length} remaining
             {daySummary.total_time_ms > 0 && (
               <span>
-                {' '}• Total time: {formatMs(daySummary.total_time_ms)}
+                {' '}
+                • Total time: {formatMs(daySummary.total_time_ms)}
                 {daySummary.estimate_delta_ms !== null && (
-                  <> <DeltaChip deltaMs={daySummary.estimate_delta_ms} /></>
+                  <>
+                    {' '}
+                    <DeltaChip deltaMs={daySummary.estimate_delta_ms} />
+                  </>
                 )}
               </span>
             )}
@@ -134,26 +146,32 @@ export function DayDetailPage() {
 
           {remainingAssignments.length > 0 && (
             <section className="day-assignment-group">
-              <h3>Remaining ({remainingAssignments.length})</h3>
-              <div className="assignment-list">
-                {remainingAssignments.map((assignment) => (
+              <div className="day-remaining-header">
+                <h3>Remaining ({remainingAssignments.length})</h3>
+                <Link
+                  className="button button-today"
+                  to={`/drill/${remainingAssignments[0]!.id}?queue_source=today`}
+                >
+                  Drill
+                </Link>
+              </div>
+              <ReorderableAssignmentList
+                assignments={remainingAssignments}
+                onReorder={handleReorder}
+                isReordering={isReordering}
+                renderItem={(assignment, sortable) => (
                   <DayAssignmentCard
                     key={assignment.id}
                     assignment={assignment}
                     dayDate={date!}
                     onRemove={handleRemove}
                     removingId={removingId}
+                    isReordering={isReordering}
+                    sortable={sortable}
                   />
-                ))}
-              </div>
-              <div className="day-drill-actions">
-                <Link 
-                  className="button button-today" 
-                  to={`/drill/${remainingAssignments[0]!.id}?queue_source=today`}
-                >
-                  Drill remaining words
-                </Link>
-              </div>
+                )}
+                renderOverlay={(assignment) => <AssignmentCardPreview assignment={assignment} />}
+              />
             </section>
           )}
         </div>
@@ -167,61 +185,52 @@ function DayAssignmentCard({
   dayDate,
   allIds,
   onRemove,
-  removingId
+  removingId,
+  isReordering = false,
+  sortable
 }: {
   assignment: Assignment;
   dayDate: string;
   allIds?: number[];
   onRemove?: (assignment: Assignment) => void;
   removingId?: number | null;
+  isReordering?: boolean;
+  sortable?: SortableAssignment;
 }) {
-  const navigate = useNavigate();
   const isCompleted = assignment.status === 'completed';
-  const isSkipped = assignment.status === 'skipped';
-  const isPending = assignment.status === 'pending';
-  const isRemovable = isPending || isSkipped;
-  const isRemoving = assignment.id === removingId;
 
-  const viewUrl = allIds && allIds.length > 0
-    ? `/word/${assignment.id}?day=${dayDate}&ids=${allIds.join(',')}`
-    : `/word/${assignment.id}?day=${dayDate}`;
+  const viewUrl =
+    allIds && allIds.length > 0
+      ? `/word/${assignment.id}?day=${dayDate}&ids=${allIds.join(',')}`
+      : `/word/${assignment.id}?day=${dayDate}`;
   const drillUrl = `/drill/${assignment.id}?queue_source=today`;
   const cardUrl = isCompleted ? viewUrl : drillUrl;
 
-  const removeButton =
-    onRemove && isRemovable ? (
-      <RemoveButton onConfirm={() => onRemove(assignment)} pending={isRemoving} />
-    ) : null;
-
   return (
-    <article
-      className={`card assignment-card ${isCompleted ? 'assignment-card--completed' : ''} ${isSkipped ? 'assignment-card--skipped' : ''}`}
-      style={{ cursor: 'pointer' }}
-      onClick={() => {
-        if (isRemoving) {
-          return;
-        }
-        navigate(cardUrl);
-      }}
-    >
-      <div className="assignment-card-content">
-        <strong>{assignment.study_item.surface_form}</strong>
-        <p className="kana">{assignment.study_item.selected_reading}</p>
-        <p>{assignment.study_item.first_gloss ?? 'No gloss available'}</p>
-        <small>
+    <AssignmentCard
+      assignment={assignment}
+      cardUrl={cardUrl}
+      onRemove={onRemove}
+      removingId={removingId}
+      isReordering={isReordering}
+      sortable={sortable}
+      meta={
+        <>
           {isCompleted && assignment.time_spent_ms !== null && (
             <span>
               Time: {formatMs(assignment.time_spent_ms)}
               {assignment.estimated_ms !== null && (
-                <> <DeltaChip deltaMs={assignment.time_spent_ms - assignment.estimated_ms} /></>
-              )}
-              {' '}•{' '}
+                <>
+                  {' '}
+                  <DeltaChip deltaMs={assignment.time_spent_ms - assignment.estimated_ms} />
+                </>
+              )}{' '}
+              •{' '}
             </span>
           )}
           {assignment.status}
-        </small>
-      </div>
-      {removeButton}
-    </article>
+        </>
+      }
+    />
   );
 }

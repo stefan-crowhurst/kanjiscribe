@@ -96,3 +96,7 @@ A day whose non-`archived` assignments contain no `pending`/`skipped` rows **and
 ## Removal surfaces
 
 The Remove action is available on **today**, **Day detail**, and **Backlog**. It is not available from the Drill page itself — removal is a list-view decision, distinct from the in-the-moment drill decision to skip/complete.
+
+## Reordering surfaces
+
+The user can reorder a day's `pending` and `skipped` assignments (drag-and-drop, via a per-assignment handle) on **today**, **Backlog** (within a day's group only — dragging never crosses days), and **Day detail**. Completed assignments are never draggable: they are fixed landmarks that hold their slot while the unfinished assignments rearrange around them. A **Day detail** page whose assignments are all `completed` is read-only — there is nothing unfinished to reorder. Reordering a day's queue changes the day's drill order, since the drill queue follows the arranged order.

@@ -31,6 +31,12 @@ export const assignmentsQuerySchema = z.object({
   date: dateSchema.optional()
 });
 
+export const assignmentOrderRequestSchema = z.object({
+  assignment_ids: z.array(z.number().int().positive())
+});
+
+export type AssignmentOrderRequest = z.infer<typeof assignmentOrderRequestSchema>;
+
 export const queueSourceSchema = z.enum(['today', 'backlog']).optional();
 
 /**
