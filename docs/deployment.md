@@ -1,12 +1,12 @@
 # Deployment Guide
 
-This document covers deploying Kanjiscribe as a production systemd service on a Raspberry Pi.
+This document covers installing Kanjiscribe as a production systemd service on a Raspberry Pi.
 
 ## Architecture
 
 The API server is bundled with `esbuild` into a single `dist/server.js` file (~1.8MB). At runtime, the only `node_modules` dependency needed is `better-sqlite3` (the native SQLite addon) — everything else is inlined into the bundle.
 
-The deployment copies built artifacts from your dev directory to a production directory.
+A release stages a complete instance from the dev build and swaps it into place with two atomic renames (ADR-0009); see [updating.md](updating.md) and the instance layout below.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ The deployment copies built artifacts from your dev directory to a production di
 
 This guide assumes:
 - **Dev / build source**: `/media/default/ssd/dev/kanjiscribe`
-- **Production deploy target**: `/media/default/ssd/prod/kanjiscribe`
+- **Production target (the live instance)**: `/media/default/ssd/prod/kanjiscribe`
 - **Data** (database + SVGs): `/media/default/ssd/prod/kanjiscribe/data`
 - **Service user**: `default` (the default Pi user)
 
@@ -44,22 +44,32 @@ This:
 4. Bundles the API with `esbuild` into `apps/api/dist/server.js`
 5. Copies SQL migration files into `apps/api/dist/db/sql/`
 
-## Step 2: Deploy to Production
+The release script runs this build itself by default, so on a normal release this step is optional — run it manually only for the manual update path (see [updating.md](updating.md)).
+
+## Step 2: Install the Instance
 
 ```bash
 cd /media/default/ssd/dev/kanjiscribe
-./scripts/deploy.sh /media/default/ssd/prod/kanjiscribe
+./scripts/release.sh release /media/default/ssd/prod/kanjiscribe --skip-service
 ```
 
-This copies the minimal runtime files:
+Use `--skip-service` for this first install: the systemd unit is not registered until Step 5, and in service mode the release would start the (not-yet-registered) service, fail its health verification, and exit 6 after the install is in place. Later releases onto this target use service mode normally.
+
+With the target not yet existing, the release script performs a **fresh install**: it assembles a complete instance at a staging directory and renames it into place. The instance contains everything the runtime needs:
+
 - `apps/api/dist/server.js` — the bundled API server (~1.8MB, all JS deps inlined)
 - `apps/api/dist/db/sql/` — database migrations
+- `apps/api/package.json` + `apps/api/node_modules/` — installed by `npm install` inside staging; contains `better-sqlite3` and its ~15 transitive dependencies (the only node_modules needed at runtime)
 - `apps/web/dist/` — the built frontend
-- `apps/api/node_modules/` — installed by `npm install` in the target; contains `better-sqlite3` and its ~15 transitive dependencies (the only node_modules needed at runtime)
 - `systemd/kanjiscribe.service` — the systemd service file
-- `docs/` — deployment and update documentation
+- `docs/` — operator guides (this deployment guide and the updating guide)
+- `data/` — an empty skeleton; **dataset import stays manual** (Step 6)
 
-## Step 3: Copy Your Data
+The target's parent directory must already exist — the release script never creates parent directories. On a fresh install no release backup is created (there was no previous instance); later releases onto the existing target back up and swap as normal. See [updating.md](updating.md) for the full release pipeline, retention rules, and rollback.
+
+## Step 3: Copy Your Data (First-time Setup Only)
+
+This step is **first-time setup only** — it brings existing data into the fresh instance once. The dev repository's `data/` is never a source for updates: every update copies the live instance's own data into the new instance instead (see [updating.md](updating.md)).
 
 If you have an existing database and KanjiVG SVG files from development:
 
@@ -74,7 +84,7 @@ sudo chown -R default:default /media/default/ssd/prod/kanjiscribe/data
 
 **Tip**: Stop the dev server first (Ctrl+C) to trigger the graceful shutdown WAL checkpoint. This flushes all pending writes to the main `.db` file, so you only need to copy that single file.
 
-If setting up fresh, create the data directory and import the datasets (see Step 6).
+If setting up fresh, skip this step and import the datasets (Step 6) — the release script's fresh install has already created the `data/` directory.
 
 ## Step 4: Review the systemd Service
 
@@ -132,7 +142,7 @@ curl http://localhost:52654/health
 # http://<pi-tailscale-ip>:52654
 ```
 
-## What Gets Deployed
+## What Gets Installed
 
 The production directory contains only what's needed at runtime:
 
@@ -151,11 +161,44 @@ The production directory contains only what's needed at runtime:
 │       └── dist/               # Built frontend
 ├── systemd/
 │   └── kanjiscribe.service     # systemd unit file
-├── docs/                       # Deployment docs
+├── docs/                       # Operator guides (deployment + updating)
 └── data/                       # Your database + kanji-svg/
 ```
 
 No other `node_modules` are needed in production.
+
+## Instance Layout and Release Siblings
+
+The live instance is one directory among several that the release script manages in the same parent:
+
+```
+/media/default/ssd/prod/
+├── kanjiscribe/                                  # live instance (the target)
+├── kanjiscribe-release-20260814-101530/          # release backup (newest)
+├── kanjiscribe-release-20260807-091512/          # release backup
+├── kanjiscribe-release-20260801-084421/          # release backup (oldest kept)
+├── kanjiscribe-failed-20260810-152233/           # failed instance (if any)
+└── kanjiscribe.staging/                          # staging instance (only mid-release)
+```
+
+- **Release backup** — `kanjiscribe-release-<TS>`: the pre-release live instance, renamed aside by the swap (the backup *is* the rename — never a copy). A full instance: code, data, systemd unit, docs. Rollback restores from it.
+- **Staging instance** — `kanjiscribe.staging`: the complete new instance assembled before the swap. Normally exists only for the seconds a release is running; a leftover from a crashed run aborts the next release until removed with `--force`.
+- **Failed instance** — `kanjiscribe-failed-<TS>`: an instance that failed health verification and was swapped back out, kept whole for inspection.
+
+Naming, the `<TS>` timestamp format, retention (3 newest release backups, 1 newest failed instance, `--keep N` override), and the anchored-matching discipline are specified in [updating.md](updating.md) — the script only ever prunes or swaps directories it recognizes, and any other directory in the parent is never listed, pruned, or overwritten.
+
+### Rollback
+
+```bash
+./scripts/release.sh list /media/default/ssd/prod/kanjiscribe    # see available backups
+./scripts/release.sh rollback /media/default/ssd/prod/kanjiscribe # restore the newest
+```
+
+Rollback is always a **full instance restore** — code and data — performed as a rename swap: the current live instance moves aside as a new release backup, and the chosen backup renames into the live slot. Study data recorded since the release is discarded. See [updating.md](updating.md) for the complete rollback flow and exit codes.
+
+### Legacy backup directory
+
+A single-slot backup directory (e.g. `kanjiscribe-manual-backup`) may sit next to the live instance from before this scheme existed. Its name does not match the script's patterns, so the script ignores it completely — it is never listed, pruned, or rolled back to. Once you trust the new rotation (a few successful releases with rollbacks tested), remove it by hand to reclaim the disk space.
 
 ## Environment Variables Reference
 
@@ -174,9 +217,9 @@ No other `node_modules` are needed in production.
 - The systemd service uses `NoNewPrivileges=true` and restricts address families to only TCP/IP and UNIX sockets.
 - No authentication is built in; this is a single-user app designed for a private Tailscale network.
 
-## Migrating from Development
+## Migrating from Development (First-time Setup Only)
 
-If you've been using the app in development and want to keep the same database in production:
+If you've been using the app in development and want to keep the same database in production, this one-time import brings the dev data into the fresh instance. This is the **only** time the dev repository's `data/` is a data source — updates never touch it (they copy the live instance's data; see [updating.md](updating.md)).
 
 **Option A — Clean shutdown (recommended):**
 Stop the dev server with Ctrl+C. This triggers `PRAGMA wal_checkpoint(TRUNCATE)`, which flushes all pending writes and removes the `-wal`/`-shm` files. Then copy just the `.db` file:

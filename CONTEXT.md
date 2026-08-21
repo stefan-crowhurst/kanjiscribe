@@ -62,6 +62,36 @@ _Avoid_: per-char record, timing log
 **Completed** (assignment status):
 An assignment that has been studied on its day. Carries `time_spent_ms` and `completed_at`. Can be `reopened` back to `pending`, but is never `archived` — removing a completed assignment would erase a study event, which is a different and unsupported operation.
 
+### Releases
+
+**Instance**:
+A self-contained deployable copy of the app (`apps/`, `data/`, `docs/`, `systemd/`) occupying a directory on disk. The live instance sits at the release target; its siblings are release backups, the staging instance, or failed instances.
+_Avoid_: deployment, build, app dir
+
+**Release**:
+The operation of promoting the dev build to a live instance: build, stage, stop service, copy data into staging, swap, start, verify — rolling back automatically if verification fails.
+_Avoid_: deploy, ship, push
+
+**Release backup**:
+A timestamped sibling copy of the live instance at release time, created by renaming the live instance aside. Rollback restores from it. The three most recent are retained.
+_Avoid_: snapshot, archive
+
+**Staging instance**:
+The complete fresh instance assembled before the swap, at a sibling path of the target. Never user-visible.
+_Avoid_: candidate, temp
+
+**Instance swap**:
+The two atomic renames that make a release take effect: live → release backup, staging → live.
+_Avoid_: cutover
+
+**Failed instance**:
+The instance that failed its health check and was swapped back out; kept at a `failed-<ts>` sibling for inspection. Only the most recent is retained.
+_Avoid_: broken build
+
+**Rollback**:
+Restoring a release backup into the live slot. Always a full restore — code and data — so study data recorded since the release is discarded.
+_Avoid_: revert, restore
+
 ## Assignment state machine
 
 ```
