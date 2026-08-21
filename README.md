@@ -11,7 +11,9 @@
 
 Private companion app to help facilitate practicing writing Japanese words from Anki workflows.
 
-This application was primarily vibe-coded to fill a need of mine, I don't guarantee the quality of the code. You can follow the planning process I went through in [NOTES.md](./NOTES.md)which led to [PLAN.md](./PLAN.md) before starting implementation.
+This application was initially vibe-coded and fairly low quality codewise (but worked!), some artifacts of this may remain. In recent times more thorough procedure has been followed along with undertaking more tech-debt busting maintenance tasks and the general quality of the codebase improved.
+
+Previously the initial notes & plan I had for this application were included in this repository, they have since been removed to avoid context poisoning. If you'd like to know more about how I work with this project now, do reach out!
 
 For context this application was created to run on a VPS/Raspberry Pi/home server setup accessed via Tailscale. It is not recommended for production use as-is.
 
@@ -122,6 +124,10 @@ pnpm --filter @kanjiscribe/importer dev     # Run importer CLI
 - **Intake** — manually add words, re-use existing study items, and create daily assignments
 - **Today view** — see and manage assignments for the current day
 - **Backlog view** — review pending and skipped assignments across all dates
+- **Queue re-ordering** — drag & drop to reorder assignments on Today, Backlog, and day detail views
+- **Word removal** — remove assignments from any day; re-adding a removed word restores (unarchives) it
+- **Time estimates** — estimated completion time for each day's queue, with actual-vs-estimate deltas shown in the dashboard charts
+- **Japanese dates** — Today and Backlog render dates in Japanese format so they're easier to remember and write
 - **Drill screen** — focused study mode with timer, complete, skip, and queue navigation
 - **Word view** — read-only review of a completed or pending assignment with kanji breakdown
 - **Day detail view** — drill into a specific date's assignments from the dashboard

@@ -1,7 +1,7 @@
 {
   "name": "kanjiscribe",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"pnpm --filter @kanjiscribe/shared dev\" \"pnpm --filter @kanjiscribe/api dev\" \"pnpm --filter @kanjiscribe/web dev\"",
