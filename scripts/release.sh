@@ -605,20 +605,23 @@ restart_service() {
 # contract is an HTTP 200 from /health, not a particular JSON representation.
 verify_health() {
     local port="$1" url="http://localhost:${1}/health" status attempt=0
-    echo "[verify] polling health endpoint: $url (30 second budget, every 2 seconds)"
-    # Fifteen attempts with a two-second interval provide the documented
-    # thirty-second budget. curl has a bounded request time so a dead endpoint
-    # cannot make an individual poll run forever.
-    while [ "$attempt" -lt 15 ]; do
+    local budget=30 interval=2 max_request=5 deadline
+    echo "[verify] polling health endpoint: $url ($budget second budget, every $interval seconds)"
+    # Poll every two seconds within the documented thirty-second budget. Each
+    # request is capped at five seconds so a hung endpoint cannot stall the
+    # loop, while a server that is slow to warm up still gets a fair chance
+    # instead of failing verification on response latency alone.
+    deadline=$((SECONDS + budget))
+    while [ "$attempt" -lt 15 ] && [ "$SECONDS" -lt "$deadline" ]; do
         attempt=$((attempt + 1))
-        status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 0.1 "$url" 2>/dev/null)" || status=""
+        status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time "$max_request" "$url" 2>/dev/null)" || status=""
         if [ "$status" = 200 ]; then
             echo "[verify] health verification succeeded (HTTP 200)"
             return 0
         fi
-        [ "$attempt" -lt 15 ] && sleep 2
+        [ "$SECONDS" -lt "$deadline" ] && sleep "$interval"
     done
-    err "health verification failed: $url did not return HTTP 200 within 30 seconds"
+    err "health verification failed: $url did not return HTTP 200 within $budget seconds"
     return "$EXIT_VERIFY"
 }
 
