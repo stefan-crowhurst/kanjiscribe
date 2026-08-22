@@ -12,8 +12,12 @@ pnpm install
 echo "Building shared package..."
 pnpm --filter @kanjiscribe/shared build
 
-echo "Building webapp (production mode - same-origin API)..."
-VITE_API_BASE="" pnpm --filter @kanjiscribe/web build
+echo "Building webapp (production mode - API base http://raspberrypi:${KANJISCRIBE_API_PORT:-52654})..."
+# The frontend is served by the api over Tailscale, so API calls are not
+# same-origin-relative: bake an absolute base pointing at the Pi's Tailscale
+# host name and the api port. Override either part via VITE_API_BASE /
+# KANJISCRIBE_API_PORT when building.
+VITE_API_BASE="${VITE_API_BASE:-http://raspberrypi:${KANJISCRIBE_API_PORT:-52654}}" pnpm --filter @kanjiscribe/web build
 
 echo "Building API bundle..."
 pnpm --filter @kanjiscribe/api build
