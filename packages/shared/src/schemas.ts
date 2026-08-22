@@ -114,7 +114,14 @@ export const envConfigSchema = z.object({
   KANJISCRIBE_DATA_DIR: z.string().trim().min(1).optional(),
   KANJISCRIBE_DB_PATH: z.string().trim().min(1).optional(),
   KANJI_SVG_DIR: z.string().trim().min(1).optional(),
-  VITE_API_BASE: z.string().trim().min(1).optional()
+  // An empty/whitespace value degrades to unset rather than failing the
+  // parse: shell exports like `VITE_API_BASE= ...` are common, and the web
+  // app treats unset as "derive the base from the browser location". Only a
+  // present, non-empty value must be a usable URL prefix.
+  VITE_API_BASE: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().trim().min(1).optional()
+  )
 });
 
 /**

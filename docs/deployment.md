@@ -40,7 +40,7 @@ cd /media/default/ssd/dev/kanjiscribe
 This:
 1. Installs dependencies
 2. Builds the shared package
-3. Builds the web frontend (with `VITE_API_BASE=""` for same-origin API calls)
+3. Builds the web frontend (with `VITE_API_BASE=http://raspberrypi:$KANJISCRIBE_API_PORT` — API calls go to the Pi's Tailscale host name, not a relative path)
 4. Bundles the API with `esbuild` into `apps/api/dist/server.js`
 5. Copies SQL migration files into `apps/api/dist/db/sql/`
 

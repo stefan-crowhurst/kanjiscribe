@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 import { sqlite } from './client.js';
-import { runMigrationsOnDb } from './run-migrations.js';
+import { findMigrationsDir, runMigrationsOnDb } from './run-migrations.js';
 import { run as runQueuePositionMigration } from './sql/0007_queue_position.js';
 
 function viewExists(name: string): boolean {
@@ -71,5 +74,44 @@ describe('migrations', () => {
     ).toEqual({ queue_position: null });
 
     db.close();
+  });
+});
+
+describe('findMigrationsDir', () => {
+  function makeTempBase(): string {
+    return fs.mkdtempSync(path.join(os.tmpdir(), 'ks-migrations-'));
+  }
+
+  it('resolves the unbundled layout: module directory beside sql/', () => {
+    const base = makeTempBase();
+    try {
+      fs.mkdirSync(path.join(base, 'sql'));
+      expect(findMigrationsDir(base)).toBe(path.join(base, 'sql'));
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves the bundled layout: server.js directory containing db/sql/', () => {
+    // Regression: the esbuild bundle inlines run-migrations.ts into
+    // dist/server.js, so the module directory is dist/ and the migrations
+    // live at dist/db/sql/. The runner used to check only <dir>/sql,
+    // silently skipping every boot migration in production.
+    const base = makeTempBase();
+    try {
+      fs.mkdirSync(path.join(base, 'db', 'sql'), { recursive: true });
+      expect(findMigrationsDir(base)).toBe(path.join(base, 'db', 'sql'));
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('returns null when neither layout exists', () => {
+    const base = makeTempBase();
+    try {
+      expect(findMigrationsDir(base)).toBeNull();
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
   });
 });
