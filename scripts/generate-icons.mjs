@@ -26,15 +26,15 @@
  * green brand tile; Inkscape/Sodipodi editor attributes are stripped because
  * standalone .svg files are parsed as strict XML by browsers.
  */
-import { readFileSync, writeFileSync } from "node:fs";
-import { deflateSync, inflateSync } from "node:zlib";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { Resvg } from "@resvg/resvg-js";
+import { readFileSync, writeFileSync } from 'node:fs';
+import { deflateSync, inflateSync } from 'node:zlib';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { Resvg } from '@resvg/resvg-js';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const PUB = resolve(ROOT, "apps/web/public");
-const PREVIEW = process.argv.includes("--preview");
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const PUB = resolve(ROOT, 'apps/web/public');
+const PREVIEW = process.argv.includes('--preview');
 
 // ---------------------------------------------------------------------------
 // 1. Extract the glyph markup from ji.svg
@@ -42,13 +42,13 @@ const PREVIEW = process.argv.includes("--preview");
 
 // Everything inside <g id="layer1"> is the artwork; the rest of the Inkscape
 // document (namedview, grid defs, document metadata) is editor noise.
-const raw = readFileSync(resolve(ROOT, "ji.svg"), "utf8");
+const raw = readFileSync(resolve(ROOT, 'ji.svg'), 'utf8');
 let glyph = raw.slice(raw.indexOf('id="layer1">') + 'id="layer1">'.length);
-glyph = glyph.slice(0, glyph.lastIndexOf("</g></svg>"));
+glyph = glyph.slice(0, glyph.lastIndexOf('</g></svg>'));
 
 // inkscape:/sodipodi: prefixed attributes have no namespace declaration once
 // extracted, which makes strict XML parsers reject the whole file — drop them.
-glyph = glyph.replace(/\s(?:inkscape|sodipodi):[\w-]+="[^"]*"/g, "");
+glyph = glyph.replace(/\s(?:inkscape|sodipodi):[\w-]+="[^"]*"/g, '');
 
 const VB = Number(raw.match(/viewBox="0 0 ([\d.]+) [\d.]+"/)[1]); // glyph coord system is square
 
@@ -87,21 +87,21 @@ const MARK_TILE = { x: 2, y: 2, w: 60, h: 60, rx: 13 }; // brand mark + install 
 const BLEED_TILE = { x: 0, y: 0, w: 64, h: 64, rx: 0 };
 
 writeFileSync(
-  resolve(PUB, "favicon.svg"),
-  composeLogo({ label: "Kanjiscribe favicon", tile: ROUNDED_TILE, glyphSize: 34.56 })
+  resolve(PUB, 'favicon.svg'),
+  composeLogo({ label: 'Kanjiscribe favicon', tile: ROUNDED_TILE, glyphSize: 34.56 })
 );
 writeFileSync(
-  resolve(PUB, "brand-mark.svg"),
-  composeLogo({ label: "Kanjiscribe mark", tile: MARK_TILE, glyphSize: 40.32 })
+  resolve(PUB, 'brand-mark.svg'),
+  composeLogo({ label: 'Kanjiscribe mark', tile: MARK_TILE, glyphSize: 40.32 })
 );
-console.log("wrote favicon.svg, brand-mark.svg");
+console.log('wrote favicon.svg, brand-mark.svg');
 
 // ---------------------------------------------------------------------------
 // 3. Rasterize the install icons via resvg
 // ---------------------------------------------------------------------------
 
 const renderPng = (svgString, size) =>
-  new Resvg(svgString, { fitTo: { mode: "width", value: size } }).render().asPng();
+  new Resvg(svgString, { fitTo: { mode: 'width', value: size } }).render().asPng();
 
 const savePng = (name, svgString, size) => {
   writeFileSync(resolve(PUB, name), renderPng(svgString, size));
@@ -109,27 +109,29 @@ const savePng = (name, svgString, size) => {
 };
 
 // Matches brand-mark.svg exactly.
-const anySvg = composeLogo({ label: "kanjiscribe", tile: MARK_TILE, glyphSize: 40.32 });
-savePng("icon-192.png", anySvg, 192);
-savePng("icon-512.png", anySvg, 512);
+const anySvg = composeLogo({ label: 'kanjiscribe', tile: MARK_TILE, glyphSize: 40.32 });
+savePng('icon-192.png', anySvg, 192);
+savePng('icon-512.png', anySvg, 512);
 
-// Maskable: glyph pulled well inside the launcher safe zone (central ~66%).
+// Maskable: the launcher safe zone is a *circle* of radius 0.4x size, so the
+// glyph's bounding square must fit inside it: side <= 0.4*sqrt(2) ~= 56.6% of
+// the canvas. 34/64 (53%) leaves ~1.5 units of margin for stroke width.
 savePng(
-  "icon-maskable-192.png",
-  composeLogo({ label: "kanjiscribe", tile: BLEED_TILE, glyphSize: 42 }),
+  'icon-maskable-192.png',
+  composeLogo({ label: 'kanjiscribe', tile: BLEED_TILE, glyphSize: 34 }),
   192
 );
 savePng(
-  "icon-maskable-512.png",
-  composeLogo({ label: "kanjiscribe", tile: BLEED_TILE, glyphSize: 42 }),
+  'icon-maskable-512.png',
+  composeLogo({ label: 'kanjiscribe', tile: BLEED_TILE, glyphSize: 34 }),
   512
 );
 
 // Apple rounds the corners itself, so ship a square full-bleed background with
 // slightly more generous glyph padding than the brand mark.
 savePng(
-  "apple-touch-icon.png",
-  composeLogo({ label: "kanjiscribe", tile: BLEED_TILE, glyphSize: 45 }),
+  'apple-touch-icon.png',
+  composeLogo({ label: 'kanjiscribe', tile: BLEED_TILE, glyphSize: 45 }),
   180
 );
 
@@ -156,15 +158,16 @@ function paste(img, ox, oy) {
       const si = (y * img.w + x) * 4;
       const di = ((oy + y) * W + ox + x) * 4;
       const a = img.rgba[si + 3] / 255;
-      for (let c = 0; c < 3; c++) sheet[di + c] = Math.round(img.rgba[si + c] * a + sheet[di + c] * (1 - a));
+      for (let c = 0; c < 3; c++)
+        sheet[di + c] = Math.round(img.rgba[si + c] * a + sheet[di + c] * (1 - a));
       sheet[di + 3] = 255;
     }
 }
 
 // Render one of the shipped .svg files at an arbitrary pixel width.
 const renderFile = (file, size) => {
-  const r = new Resvg(readFileSync(resolve(PUB, file), "utf8"), {
-    fitTo: { mode: "width", value: size },
+  const r = new Resvg(readFileSync(resolve(PUB, file), 'utf8'), {
+    fitTo: { mode: 'width', value: size }
   }).render();
   return { w: r.width, h: r.height, rgba: Buffer.from(r.pixels) };
 };
@@ -179,7 +182,8 @@ function decodePng(file) {
   const idat = [];
   while (pos < buf.length) {
     const len = buf.readUInt32BE(pos);
-    if (buf.toString("ascii", pos + 4, pos + 8) === "IDAT") idat.push(buf.subarray(pos + 8, pos + 8 + len));
+    if (buf.toString('ascii', pos + 4, pos + 8) === 'IDAT')
+      idat.push(buf.subarray(pos + 8, pos + 8 + len));
     pos += 12 + len;
   }
   const raw = inflateSync(Buffer.concat(idat));
@@ -210,16 +214,16 @@ function decodePng(file) {
   return { w, h, rgba: out };
 }
 
-paste(renderFile("favicon.svg", 256), 48, 40); // top row: shipped SVGs, large
-paste(renderFile("brand-mark.svg", 256), 368, 40);
+paste(renderFile('favicon.svg', 256), 48, 40); // top row: shipped SVGs, large
+paste(renderFile('brand-mark.svg', 256), 368, 40);
 
-paste(decodePng(resolve(PUB, "icon-192.png")), 48, 360); // bottom row: install PNGs...
-paste(decodePng(resolve(PUB, "icon-maskable-192.png")), 288, 360);
-paste(decodePng(resolve(PUB, "apple-touch-icon.png")), 528, 366);
-paste(renderFile("favicon.svg", 64), 768, 376); // ...and simulated small sizes
-paste(renderFile("brand-mark.svg", 64), 768, 464);
-paste(renderFile("favicon.svg", 24), 872, 376);
-paste(renderFile("brand-mark.svg", 20), 916, 380);
+paste(decodePng(resolve(PUB, 'icon-192.png')), 48, 360); // bottom row: install PNGs...
+paste(decodePng(resolve(PUB, 'icon-maskable-192.png')), 288, 360);
+paste(decodePng(resolve(PUB, 'apple-touch-icon.png')), 528, 366);
+paste(renderFile('favicon.svg', 64), 768, 376); // ...and simulated small sizes
+paste(renderFile('brand-mark.svg', 64), 768, 464);
+paste(renderFile('favicon.svg', 24), 872, 376);
+paste(renderFile('brand-mark.svg', 20), 916, 380);
 
 // Minimal PNG encoder for the sheet itself (filter 0 rows, zlib deflate).
 function crc32(buf) {
@@ -233,7 +237,7 @@ function crc32(buf) {
 const chunk = (type, data) => {
   const len = Buffer.alloc(4);
   len.writeUInt32BE(data.length);
-  const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+  const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
   const crc = Buffer.alloc(4);
   crc.writeUInt32BE(crc32(body));
   return Buffer.concat([len, body, crc]);
@@ -245,14 +249,14 @@ ihdr[8] = 8; // bit depth
 ihdr[9] = 6; // colour type: RGBA
 const rawRows = Buffer.alloc(H * (W * 4 + 1));
 for (let y = 0; y < H; y++) sheet.copy(rawRows, y * (W * 4 + 1) + 1, y * W * 4, (y + 1) * W * 4);
-const outPath = resolve(process.cwd(), "icon-preview.png");
+const outPath = resolve(process.cwd(), 'icon-preview.png');
 writeFileSync(
   outPath,
   Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk("IHDR", ihdr),
-    chunk("IDAT", deflateSync(rawRows)),
-    chunk("IEND", Buffer.alloc(0)),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(rawRows)),
+    chunk('IEND', Buffer.alloc(0))
   ])
 );
 console.log(`wrote ${outPath}`);
