@@ -1,4 +1,8 @@
-# kanjiscribe
+<div align="center">
+  <img width="80em" src="apps/web/public/brand-mark.svg" alt="Logo" />
+</div>
+
+<h1 align="center">kanjiscribe</h1>
 
 <div align="center">
   <table>
