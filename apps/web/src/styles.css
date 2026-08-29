@@ -1305,6 +1305,11 @@ small {
   color: #8f1b1b;
 }
 
+.reading-picker-error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 .success {
   color: var(--ok);
 }
