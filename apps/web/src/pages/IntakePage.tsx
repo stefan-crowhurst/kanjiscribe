@@ -12,6 +12,7 @@ export function IntakePage() {
   const [selectedReading, setSelectedReading] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [intakeStats, setIntakeStats] = useState<DashboardResponse | null>(null);
@@ -44,6 +45,7 @@ export function IntakePage() {
 
     setError(null);
     setStatus(null);
+    setAddError(null);
     setSelectedEntryId(null);
     setSelectedReading('');
     setResults([]);
@@ -85,7 +87,7 @@ export function IntakePage() {
     }
 
     if (!selectedReading) {
-      setError('Select a reading.');
+      setAddError('Select a reading.');
       return;
     }
 
@@ -94,7 +96,7 @@ export function IntakePage() {
     }
 
     setIsCreating(true);
-    setError(null);
+    setAddError(null);
 
     try {
       const surfaceForm = selectedEntry.primary_spelling ?? query.trim();
@@ -114,7 +116,7 @@ export function IntakePage() {
       await loadIntakeStats();
       searchInputRef.current?.focus();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create assignment');
+      setAddError(err instanceof Error ? err.message : 'Failed to create assignment');
     } finally {
       setIsCreating(false);
     }
@@ -194,6 +196,7 @@ export function IntakePage() {
                   }`}
                   onClick={() => {
                     setSelectedEntryId(entry.entry_id);
+                    setAddError(null);
                     if (entry.readings.length === 1) {
                       const onlyReading = entry.readings[0];
                       if (onlyReading) {
@@ -236,7 +239,10 @@ export function IntakePage() {
               <select
                 id="reading-select"
                 value={selectedReading}
-                onChange={(event) => setSelectedReading(event.target.value)}
+                onChange={(event) => {
+                  setSelectedReading(event.target.value);
+                  setAddError(null);
+                }}
               >
                 <option value="">Select a reading</option>
                 {selectedEntry.readings.map((reading) => (
@@ -249,6 +255,12 @@ export function IntakePage() {
               <button type="button" className="button" onClick={onCreate} disabled={isCreating}>
                 {isCreating ? 'Adding...' : 'Add'}
               </button>
+
+              {addError ? (
+                <p className="error reading-picker-error" aria-live="polite">
+                  {addError}
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>

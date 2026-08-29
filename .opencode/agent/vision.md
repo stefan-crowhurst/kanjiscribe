@@ -1,5 +1,5 @@
 ---
-description: Vision specialist that looks at images and reports what it sees. Use whenever the user references an image, screenshot, mockup, diagram, chart, UI render, or paste, and the current model cannot see attachments. Front-load: if a user asks "what's in this image", mentions an image/screenshot, silently attaches an image, or a Read/attachment call fails with "model does not support image input"/"cannot read image", delegate to this agent and relay its report. Runs on MiMo v2.5 (opencode-go).
+description: Vision specialist that looks at images and reports what it sees. Use ONLY when the active model does NOT have native vision capabilities — for example you cannot see an attached image yourself, a Read/attachment call fails with "model does not support image input"/"cannot read image", or you are a text-only model. If you can see the image natively, read it directly and do NOT delegate here. The trigger is model capability, not the user's wording: if a user asks "what's in this image", mentions an image/screenshot, or silently attaches one, first check whether you can see it yourself before delegating. Runs on MiMo v2.5 (opencode-go).
 mode: subagent
 model: opencode-go/mimo-v2.5
 permission:
