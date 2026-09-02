@@ -275,3 +275,146 @@ describe('dictionary + intake response contract — api bytes parse through the 
     expect(reactivated.study_item.is_new).toBe(false);
   });
 });
+
+describe('intake normalizes the selected reading to the entry’s canonical reading (ADR 0010)', () => {
+  beforeEach(() => {
+    resetDb();
+    resetCounters();
+  });
+
+  function seedCanonicalEntry(): void {
+    seedEntry({
+      id: 3,
+      is_common: 1,
+      spellings: [{ text: '蓋', is_primary: 1 }],
+      readings: [
+        { text: 'ふた', is_primary: 1, no_kanji: 0 },
+        { text: 'がい', is_primary: 0, no_kanji: 0 }
+      ]
+    });
+  }
+
+  function intakeWith(payload: {
+    surface_form: string;
+    selected_reading: string;
+    dictionary_entry_id: number;
+    assigned_for_date?: string;
+  }) {
+    return app.inject({
+      method: 'POST',
+      url: '/study-items/intake',
+      payload: JSON.stringify({
+        source_type: 'manual',
+        assigned_for_date: '2024-01-02',
+        ...payload
+      }),
+      headers: { 'content-type': 'application/json' }
+    });
+  }
+
+  it('stores the canonical hiragana reading when the payload carries the katakana variant', async () => {
+    seedCanonicalEntry();
+
+    const res = await intakeWith({
+      surface_form: '蓋',
+      selected_reading: 'フタ',
+      dictionary_entry_id: 3
+    });
+    expect(res.statusCode).toBe(201);
+
+    const body = parseWith(intakeResponseSchema, res.body);
+    expect(body.study_item).toMatchObject({
+      surface_form: '蓋',
+      selected_reading: 'ふた',
+      dictionary_entry_id: 3,
+      is_new: true
+    });
+  });
+
+  it('keeps a genuinely katakana reading when its entry stores no hiragana twin', async () => {
+    seedEntry({
+      id: 4,
+      is_common: 1,
+      spellings: [{ text: 'ダンス', is_primary: 1 }],
+      readings: [{ text: 'ダンス', is_primary: 1 }]
+    });
+
+    const res = await intakeWith({
+      surface_form: 'ダンス',
+      selected_reading: 'ダンス',
+      dictionary_entry_id: 4
+    });
+    expect(res.statusCode).toBe(201);
+
+    const body = parseWith(intakeResponseSchema, res.body);
+    expect(body.study_item.selected_reading).toBe('ダンス');
+  });
+
+  it('never rewrites a reading the entry does not store', async () => {
+    seedCanonicalEntry();
+
+    const res = await intakeWith({
+      surface_form: '蓋',
+      selected_reading: 'バナナ',
+      dictionary_entry_id: 3
+    });
+    expect(res.statusCode).toBe(201);
+
+    const body = parseWith(intakeResponseSchema, res.body);
+    // バナナ shares no identity with a stored reading, so it is kept as
+    // written — never folded into a ばなな the entry does not store.
+    expect(body.study_item.selected_reading).toBe('バナナ');
+  });
+
+  it('deduplicates a katakana-variant payload against an existing canonical study item', async () => {
+    seedCanonicalEntry();
+    const existing = seedStudyItem(sqlite, 3, { surface_form: '蓋', selected_reading: 'ふた' });
+
+    const res = await intakeWith({
+      surface_form: '蓋',
+      selected_reading: 'フタ',
+      dictionary_entry_id: 3
+    });
+    expect(res.statusCode).toBe(201);
+
+    const body = parseWith(intakeResponseSchema, res.body);
+    expect(body.study_item.id).toBe(existing);
+    expect(body.study_item.is_new).toBe(false);
+    expect(body.study_item.selected_reading).toBe('ふた');
+
+    const count = sqlite
+      .prepare(`SELECT COUNT(*) AS count FROM study_item WHERE dictionary_entry_id = 3`)
+      .get() as { count: number };
+    expect(count.count).toBe(1);
+  });
+
+  it('never creates a second study item across days once a variant has been normalized', async () => {
+    seedCanonicalEntry();
+
+    const first = await intakeWith({
+      surface_form: '蓋',
+      selected_reading: 'フタ',
+      dictionary_entry_id: 3,
+      assigned_for_date: '2024-01-02'
+    });
+    expect(first.statusCode).toBe(201);
+    const firstBody = parseWith(intakeResponseSchema, first.body);
+    expect(firstBody.study_item.selected_reading).toBe('ふた');
+
+    const second = await intakeWith({
+      surface_form: '蓋',
+      selected_reading: 'フタ',
+      dictionary_entry_id: 3,
+      assigned_for_date: '2024-01-03'
+    });
+    expect(second.statusCode).toBe(201);
+    const secondBody = parseWith(intakeResponseSchema, second.body);
+    expect(secondBody.study_item.id).toBe(firstBody.study_item.id);
+    expect(secondBody.study_item.is_new).toBe(false);
+
+    const count = sqlite
+      .prepare(`SELECT COUNT(*) AS count FROM study_item WHERE dictionary_entry_id = 3`)
+      .get() as { count: number };
+    expect(count.count).toBe(1);
+  });
+});

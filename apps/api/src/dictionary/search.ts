@@ -1,4 +1,10 @@
-import { stringArraySchema, type DictionaryMatchType, type DictionarySearchResult } from '@kanjiscribe/shared';
+import {
+  foldReadingToHiragana,
+  foldReadingToKatakana,
+  stringArraySchema,
+  type DictionaryMatchType,
+  type DictionarySearchResult
+} from '@kanjiscribe/shared';
 
 import { todayIsoDate } from '../config.js';
 import { sqlite } from '../db/client.js';
@@ -21,21 +27,32 @@ export function searchDictionary(query: string): DictionarySearchResult[] {
       value: query
     },
     {
-      type: 'exact_reading',
-      sql: `SELECT DISTINCT entry_id FROM entry_reading WHERE text = ? LIMIT 50`,
-      value: query
-    },
-    {
       type: 'prefix_spelling',
       sql: `SELECT DISTINCT entry_id FROM entry_spelling WHERE text LIKE ? LIMIT 50`,
       value: `${query}%`
-    },
-    {
-      type: 'prefix_reading',
-      sql: `SELECT DISTINCT entry_id FROM entry_reading WHERE text LIKE ? LIMIT 50`,
-      value: `${query}%`
     }
   ];
+
+  // Reading queries are script-insensitive (ADR 0010): the raw query plus the
+  // query folded to hiragana and to katakana are all matched, and the best
+  // match type across the query forms wins. The raw query is included so
+  // mixed-script readings (e.g. バカな), which fold to neither pure script,
+  // keep matching their own stored form.
+  const queryFolds = Array.from(
+    new Set([query, foldReadingToHiragana(query), foldReadingToKatakana(query)])
+  );
+  for (const queryFold of queryFolds) {
+    strategies.push({
+      type: 'exact_reading',
+      sql: `SELECT DISTINCT entry_id FROM entry_reading WHERE text = ? LIMIT 50`,
+      value: queryFold
+    });
+    strategies.push({
+      type: 'prefix_reading',
+      sql: `SELECT DISTINCT entry_id FROM entry_reading WHERE text LIKE ? LIMIT 50`,
+      value: `${queryFold}%`
+    });
+  }
 
   for (const strategy of strategies) {
     const rows = sqlite.prepare(strategy.sql).all(strategy.value) as Array<{ entry_id: number }>;

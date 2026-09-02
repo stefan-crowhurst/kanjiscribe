@@ -224,6 +224,132 @@ describe('GET /dictionary/search', () => {
   });
 });
 
+describe('GET /dictionary/search — script-insensitive reading search (ADR 0010)', () => {
+  beforeEach(() => {
+    resetDb();
+    resetCounters();
+  });
+
+  it('finds a hiragana-stored reading when the query is typed in katakana', async () => {
+    seedEntry({
+      id: 1,
+      is_common: 1,
+      spellings: [{ text: 'あっさり', is_primary: 1 }],
+      readings: [{ text: 'あっさり', is_primary: 1 }]
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/dictionary/search?q=アッサリ' });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as {
+      results: Array<{ entry_id: number; match_type: string }>;
+    };
+    expect(body.results.map((r) => r.entry_id)).toEqual([1]);
+    expect(body.results[0]?.match_type).toBe('exact_reading');
+  });
+
+  it('finds a katakana-stored reading when the query is typed in hiragana', async () => {
+    seedEntry({
+      id: 2,
+      is_common: 1,
+      spellings: [{ text: 'ダンス', is_primary: 1 }],
+      readings: [{ text: 'ダンス', is_primary: 1 }]
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/dictionary/search?q=だんす' });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as {
+      results: Array<{ entry_id: number; match_type: string }>;
+    };
+    expect(body.results.map((r) => r.entry_id)).toEqual([2]);
+    expect(body.results[0]?.match_type).toBe('exact_reading');
+  });
+
+  it('ranks an exact reading match via one script variant above a prefix match via the other', async () => {
+    seedEntry({
+      id: 1,
+      is_common: 1,
+      spellings: [{ text: 'あっさり', is_primary: 1 }],
+      readings: [{ text: 'あっさり', is_primary: 1 }]
+    });
+    seedEntry({
+      id: 2,
+      is_common: 1,
+      // あっさり味 does not prefix-match the raw katakana query アッサリ, so
+      // the only spelling-tier match is the exact hiragana spelling of entry
+      // 1's twin — the reading-tier prefix is what ranks second.
+      spellings: [{ text: 'あっさり味', is_primary: 1 }],
+      readings: [{ text: 'アッサリテイスト', is_primary: 1 }]
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/dictionary/search?q=アッサリ' });
+
+    const body = JSON.parse(res.body) as {
+      results: Array<{ entry_id: number; match_type: string }>;
+    };
+    expect(body.results.map((r) => r.entry_id)).toEqual([1, 2]);
+    expect(body.results[0]?.match_type).toBe('exact_reading');
+    expect(body.results[1]?.match_type).toBe('prefix_reading');
+  });
+
+  it('leaves spelling search unaffected: a script-variant query still matches by reading, not spelling', async () => {
+    seedEntry({
+      id: 1,
+      is_common: 1,
+      spellings: [{ text: 'だんす', is_primary: 1 }],
+      readings: [{ text: 'ダンス', is_primary: 1 }]
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/dictionary/search?q=ダンス' });
+
+    const body = JSON.parse(res.body) as {
+      results: Array<{ entry_id: number; match_type: string }>;
+    };
+    // ダンス (katakana) does not match the hiragana spelling だんす, and the
+    // reading match happens via the folded katakana form — still a
+    // reading-tier match, never a spelling-tier match.
+    expect(body.results.map((r) => r.entry_id)).toEqual([1]);
+    expect(body.results[0]?.match_type).toBe('exact_reading');
+  });
+
+  it('a mixed-script reading keeps matching its own stored form', async () => {
+    seedEntry({
+      id: 1,
+      is_common: 1,
+      // アホ does not match the query, so the hit is a reading-tier match.
+      spellings: [{ text: 'アホ', is_primary: 1 }],
+      readings: [{ text: 'バカな', is_primary: 1 }]
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/dictionary/search?q=バカな' });
+
+    const body = JSON.parse(res.body) as {
+      results: Array<{ entry_id: number; match_type: string }>;
+    };
+    // バカな folds to neither pure script, so the raw query itself must
+    // match — otherwise the entry becomes unfindable by its own reading.
+    expect(body.results.map((r) => r.entry_id)).toEqual([1]);
+    expect(body.results[0]?.match_type).toBe('exact_reading');
+  });
+
+  it('serves at most one reading per script identity in collapsed search results', async () => {
+    seedEntry({
+      id: 1,
+      is_common: 1,
+      spellings: [{ text: 'あっさり', is_primary: 1 }],
+      readings: [{ text: 'あっさり', is_primary: 1 }]
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/dictionary/search?q=アッサリ' });
+
+    const body = JSON.parse(res.body) as {
+      results: Array<{ readings: Array<{ text: string; no_kanji: boolean }> }>;
+    };
+    expect(body.results[0]?.readings).toEqual([{ text: 'あっさり', no_kanji: false }]);
+  });
+});
+
 describe('GET /dictionary/entries/:id', () => {
   beforeEach(() => {
     resetDb();
