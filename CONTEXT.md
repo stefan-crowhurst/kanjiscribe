@@ -62,6 +62,24 @@ _Avoid_: per-char record, timing log
 **Completed** (assignment status):
 An assignment that has been studied on its day. Carries `time_spent_ms` and `completed_at`. Can be `reopened` back to `pending`, but is never `archived` — removing a completed assignment would erase a study event, which is a different and unsupported operation.
 
+### Dictionary readings
+
+**Reading**:
+A kana pronunciation of a dictionary entry. Readings that differ only by kana script (hiragana vs katakana) are the same reading — the dictionary stores one representative per reading, never script variants of it.
+_Avoid_: reading variant, duplicate reading
+
+**Canonical reading**:
+The single representative kept for a reading: the hiragana form when the entry has one, otherwise the katakana form. Every reading offered for selection, and every study item's selected reading, is canonical.
+_Avoid_: normalized reading, preferred reading
+
+**Primary reading**:
+The entry's first reading in dictionary order — the display default when nothing has been selected. An orthogonal concept to **canonical reading**: a primary reading is about ordering among a entry's readings, not about script identity.
+_Avoid_: default reading, main reading
+
+**Selected reading**:
+The reading fixed on a study item at intake and written out during the reading-writing first copy. Always a canonical reading of the item's entry.
+_Avoid_: chosen reading, picked reading
+
 ### Releases
 
 **Instance**:

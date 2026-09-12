@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
 
+import { collapseEntryReadings, foldReadingToHiragana } from '@kanjiscribe/shared';
 import Database from 'better-sqlite3';
 import { XMLParser } from 'fast-xml-parser';
 import sax from 'sax';
@@ -428,10 +429,33 @@ function importJmdict(sourceFile: string): Promise<void> {
           insertSpelling.run(entry.id, spelling.text, index === 0 ? 1 : 0, extractNfRank(spelling.pri));
         });
 
-        entry.readings.forEach((reading, index) => {
-          insertReading.run(entry.id, reading.text, index === 0 ? 1 : 0, reading.noKanji ? 1 : 0);
+        // Collapse hiragana/katakana twins of one reading identity (ADR 0010):
+        // exactly one stored row per identity, hiragana-preferred, survivors
+        // in dictionary order — the first survivor is the primary reading.
+        // Restrictions that referenced a dropped form are remapped onto the
+        // kept reading and deduplicated, so nothing dangles.
+        const collapsedReadings = collapseEntryReadings(entry.readings.map((r) => r.text));
+        const survivorByIdentity = new Map(
+          collapsedReadings.map((text) => [foldReadingToHiragana(text), text])
+        );
+        const restrictionsBySurvivor = new Map<string, Set<string>>();
+        for (const reading of entry.readings) {
+          const survivor = survivorByIdentity.get(foldReadingToHiragana(reading.text));
+          if (!survivor) {
+            continue;
+          }
+          const restrictions = restrictionsBySurvivor.get(survivor) ?? new Set<string>();
           for (const restrictedSpelling of reading.restr) {
-            insertReadingSpelling.run(entry.id, reading.text, restrictedSpelling);
+            restrictions.add(restrictedSpelling);
+          }
+          restrictionsBySurvivor.set(survivor, restrictions);
+        }
+
+        collapsedReadings.forEach((text, index) => {
+          const original = entry.readings.find((reading) => reading.text === text);
+          insertReading.run(entry.id, text, index === 0 ? 1 : 0, original?.noKanji ? 1 : 0);
+          for (const restrictedSpelling of restrictionsBySurvivor.get(text) ?? []) {
+            insertReadingSpelling.run(entry.id, text, restrictedSpelling);
           }
         });
 

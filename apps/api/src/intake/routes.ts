@@ -1,4 +1,5 @@
 import {
+  foldReadingToHiragana,
   intakeRequestSchema,
   isKanjiChar,
   type AssignmentOrigin,
@@ -57,6 +58,23 @@ function kanjiSvgFilename(char: string): string {
   return codePoint.toString(16).padStart(5, '0').toLowerCase();
 }
 
+/**
+ * Resolve the canonical selected reading (ADR 0010): the entry's stored
+ * reading whose folded identity matches the incoming reading, so a katakana
+ * spelling of the reading stores the entry's hiragana canonical form, while
+ * genuinely katakana readings keep their stored katakana text. When the
+ * entry has no reading of that identity the incoming reading is kept as-is —
+ * a payload reading is never rewritten into a form the entry does not store.
+ */
+function canonicalSelectedReading(entryId: number, selectedReading: string): string {
+  const identity = foldReadingToHiragana(selectedReading);
+  const stored = sqlite
+    .prepare(`SELECT text FROM entry_reading WHERE entry_id = ?`)
+    .all(entryId) as Array<{ text: string }>;
+  const match = stored.find((row) => foldReadingToHiragana(row.text) === identity);
+  return match?.text ?? selectedReading;
+}
+
 export function registerIntakeRoutes(app: FastifyInstance): void {
   app.post('/study-items/intake', async (request, reply): Promise<FastifyReply | undefined> => {
     const parsed = parseOr400(intakeRequestSchema, request.body, reply);
@@ -77,6 +95,15 @@ export function registerIntakeRoutes(app: FastifyInstance): void {
       return notFound(reply, 'Dictionary entry not found');
     }
 
+    // A study item's selected reading is always a canonical reading of its
+    // entry (ADR 0010): resolve the canonical reading before the duplicate
+    // check and insert so script spellings of one reading never create a
+    // second study item.
+    const selectedReading = canonicalSelectedReading(
+      payload.dictionary_entry_id,
+      payload.selected_reading
+    );
+
     const transaction = sqlite.transaction((): IntakeTransactionResult => {
       const existing = sqlite
         .prepare(
@@ -88,7 +115,7 @@ export function registerIntakeRoutes(app: FastifyInstance): void {
         )
         .get(
           payload.surface_form,
-          payload.selected_reading,
+          selectedReading,
           payload.dictionary_entry_id
         ) as
         | {
@@ -119,7 +146,7 @@ export function registerIntakeRoutes(app: FastifyInstance): void {
           )
           .run(
             payload.surface_form,
-            payload.selected_reading,
+            selectedReading,
             payload.dictionary_entry_id,
             payload.source_type,
             now
@@ -129,7 +156,7 @@ export function registerIntakeRoutes(app: FastifyInstance): void {
         studyItem = {
           id: newId,
           surface_form: payload.surface_form,
-          selected_reading: payload.selected_reading,
+          selected_reading: selectedReading,
           dictionary_entry_id: payload.dictionary_entry_id,
           source_type: payload.source_type,
           created_at: now
