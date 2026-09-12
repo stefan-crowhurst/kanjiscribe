@@ -1,7 +1,7 @@
 ---
-description: Implements a .scratch issue end-to-end (code + tests) for EASY, mechanical slices — frontend rendering, CSS, display formatting, simple wiring. Runs on DeepSeek V4 Flash (opencode-go).
+description: Implements a .scratch issue end-to-end (code + tests) for EASY, mechanical slices — frontend rendering, CSS, display formatting, simple wiring. Runs on DeepSeek V4.1 Flash (opencode-go).
 mode: subagent
-model: opencode-go/deepseek-v4-flash
+model: opencode-go/deepseek-v4.1-flash
 options:
   reasoningEffort: max
 permission:
@@ -38,7 +38,7 @@ Load the `implement` skill via the skill tool at the start of your run and follo
 
 ## Seeing images
 
-Your model (DeepSeek V4 Flash) cannot see images. If the issue, PRD, or code references an image (a screenshot, diagram, mockup, UI render, or chart) and you cannot see it yourself, delegate to the `vision` subagent: tell it the image path and what you need to know from it, read its report, and proceed on that basis. Do not guess at image contents.
+You have native vision. Read images (screenshots, diagrams, mockups, UI renders, charts) referenced by the issue, PRD, or code directly with the Read tool — do not delegate to a subagent.
 
 ## Verify before finishing
 

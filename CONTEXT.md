@@ -80,6 +80,10 @@ _Avoid_: default reading, main reading
 The reading fixed on a study item at intake and written out during the reading-writing first copy. Always a canonical reading of the item's entry.
 _Avoid_: chosen reading, picked reading
 
+**Romaji form**:
+A reading's strict Hepburn rendering, stored per reading for Latin-script search: n for ん, doubled consonants for っ, literal vowel sequences for long sounds (toukyou, koohii, sensei), ji/zu for ぢ/づ, o for を. Other romanizations — tokyo, kohi, Kunrei-shiki (susi) — are not Romaji forms and do not match.
+_Avoid_: English form, romanization, transliteration
+
 ### Releases
 
 **Instance**:
