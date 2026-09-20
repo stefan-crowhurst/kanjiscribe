@@ -26,11 +26,9 @@ const READING_TEXT: SearchColumn = { table: 'entry_reading', column: 'text' };
 const READING_ROMAJI: SearchColumn = { table: 'entry_reading', column: 'romaji' };
 
 /**
- * Escape LIKE metacharacters so a romaji query containing `%` or `_` is
- * matched literally, not as a wildcard (`%` as a query must not scan every
- * row). Only the romaji strategies escape: they are user-typed Latin input,
- * while spelling/kana matching deliberately keeps its pre-existing wildcard
- * semantics.
+ * Escapes LIKE metacharacters so `%`/`_` in a romaji query match literally,
+ * not as wildcards. Only romaji strategies escape — spelling/kana deliberately
+ * keep their pre-existing wildcard semantics.
  */
 function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (char) => `\\${char}`);
@@ -45,9 +43,9 @@ function exactStrategy(column: SearchColumn, type: DictionaryMatchType, value: s
 }
 
 /**
- * Prefix match that intentionally keeps raw LIKE wildcard semantics (`%`/`_`
- * in the value act as wildcards). Used for spelling and kana queries; romaji
- * queries use `escapedPrefixStrategy` instead.
+ * Prefix match that keeps raw LIKE wildcard semantics (`%`/`_` act as
+ * wildcards) for spelling and kana queries; romaji uses
+ * `escapedPrefixStrategy` instead.
  */
 function prefixStrategy(column: SearchColumn, type: DictionaryMatchType, value: string): Strategy {
   return {
@@ -91,16 +89,11 @@ export function searchDictionary(query: string): DictionarySearchResult[] {
     strategies.push(prefixStrategy(READING_TEXT, 'prefix_reading', queryFold));
   }
 
-  // Romaji queries (ADR 0011): match the stored Romaji form for every query so
-  // a Latin query finds readings without a kana IME. The query is cleaned
-  // (lowercased, apostrophes stripped, macrons expanded) and particle
-  // alternates are derived from it (non-initial wa→ha, wo→o, e→he). Each
-  // variant uses both exact and prefix strategies except the whole-query
-  // wa/wo/e alternates, which are exact-only so they cannot become a `ha%`
-  // style prefix scan. The e→he alternate is skipped when the literal query is
-  // itself an exact stored reading — ie/ue/koe/mae stay words rather than
-  // pulling いへん/うへっ/こへい/まへん in via prefix. wa→ha is never skipped:
-  // dewa must still find では even though 出羽 stores dewa.
+  // Romaji queries (ADR 0011) match the stored Romaji form using cleaned and
+  // particle-alternate variants; a whole-query `wa`/`wo`/`e` alternate is
+  // exact-only so it cannot become a `ha%` prefix scan. The `e`→`he` alternate
+  // is skipped when the query is itself an exact stored reading (ie/ue/koe/mae
+  // stay words), while `wa`→`ha` never is — `dewa` must still find では.
   const cleanedRomaji = cleanRomajiQuery(query);
   const cleanedIsStoredReading =
     cleanedRomaji !== '' &&

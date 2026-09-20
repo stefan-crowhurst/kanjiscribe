@@ -149,10 +149,9 @@ export type SeedReading = {
   is_primary?: number;
   no_kanji?: number;
   /**
-   * The reading's stored Romaji form, written as an explicit literal. Omit it
-   * (NULL) for tests that do not exercise romaji search; romaji-search tests
-   * pass the expected stored form as a literal so the fixture never depends on
-   * the production converter. Converter rules are pinned by
+   * The reading's stored Romaji form as an explicit literal; omit (NULL) when
+   * the test doesn't exercise romaji search, so fixtures never depend on the
+   * production converter. Converter rules are pinned by
    * `packages/shared/src/romaji.test.ts` and the importer test.
    */
   romaji?: string | null;

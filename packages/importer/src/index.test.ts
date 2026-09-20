@@ -40,9 +40,8 @@ describe('importer schema-ensure on a pre-feature database', () => {
     dbPath = path.join(tempDir, 'kanjiscribe.db');
     process.env.KANJISCRIBE_DB_PATH = dbPath;
 
-    // Pre-feature database: the initial schema before `entry_reading.romaji`
-    // existed (no romaji column or index), with a reading already present that
-    // has no romaji.
+    // Pre-feature database: the schema before `entry_reading.romaji` existed
+    // (no column or index), with a reading that has no romaji.
     const schema = fs
       .readFileSync(INITIAL_SCHEMA_PATH, 'utf8')
       .replace(/^\s*romaji TEXT,\n/m, '')
@@ -81,9 +80,8 @@ describe('importer schema-ensure on a pre-feature database', () => {
     ensureSchema(schemaDb, INITIAL_SCHEMA_PATH);
     schemaDb.close();
 
-    // Schema-ensure fixes the shape only: the pre-existing reading waits for
-    // the boot migration's backfill and is written when the import replaces
-    // the entry's readings.
+    // Schema-ensure fixes the shape only; the pre-existing reading's romaji is
+    // backfilled later, when the import rewrites the entry's readings.
     const schemaOnlyDb = new Database(dbPath, { readonly: true });
     expect(
       schemaOnlyDb.prepare(`SELECT romaji FROM entry_reading WHERE entry_id = 9000001`).get()

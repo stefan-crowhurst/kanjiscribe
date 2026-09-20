@@ -763,9 +763,8 @@ describe('GET /dictionary/search — particle alternates (ADR 0011)', () => {
       spellings: [{ text: '払う', is_primary: 1 }],
       readings: [{ text: 'はらう', is_primary: 1, romaji: 'harau' }]
     });
-    // Standalone non-initial e lookalikes: each query below is itself an exact
-    // stored reading, so its final e is treated as part of the word and the
-    // e→he alternate is suppressed — the decoys further down stay unmatched.
+    // Each query below is itself an exact stored reading, so the `e`→`he`
+    // alternate is suppressed and the decoys stay unmatched.
     seedEntry({
       id: 5,
       is_common: 1,

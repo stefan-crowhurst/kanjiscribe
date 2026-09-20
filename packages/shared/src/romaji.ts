@@ -1,11 +1,10 @@
 /**
- * The Romaji form (ADR 0011): a reading's strict Hepburn rendering, used for
- * Latin-script search. Exactly one stored form per reading, kana-literal:
- * long vowels stay written out (とうきょう → toukyou), ん is always `n`,
- * っ doubles the following consonant, ぢ/づ collapse onto ji/zu, and を is
- * `o`. The conversion is pure and total: anything it does not recognise
- * passes through lowercased, and only a reading that reduces to nothing
- * (bare ー, 〜, or an iteration mark) yields `null`.
+ * The Romaji form (ADR 0011): a reading's strict Hepburn rendering used for
+ * Latin-script search, stored once per reading and kana-literal — long vowels
+ * written out (とうきょう → toukyou), ん → `n`, っ doubling the next
+ * consonant, ぢ/づ → ji/zu, and を → `o`. Pure and total: unknown characters
+ * pass through lowercased, and a reading that reduces to nothing (bare ー, 〜,
+ * iteration mark) yields `null`.
  */
 
 import { foldReadingToHiragana } from './reading-fold.js';
@@ -13,10 +12,10 @@ import { foldReadingToHiragana } from './reading-fold.js';
 const LONG_VOWELS = new Set(['a', 'i', 'u', 'e', 'o']);
 
 /**
- * Characters dropped from the stored form: the middle dot, wave dashes (both
- * the full-width tilde U+FF5E, which NFKC turns into ASCII `~`, and U+301C),
- * Japanese commas and stops, and the full-width equals sign (ASCII `=`
- * after NFKC). Input written with `=` as a mora separator still converts.
+ * Characters dropped from the stored form: the middle dot, wave dashes (the
+ * full-width tilde U+FF5E that NFKC turns into ASCII `~`, plus U+301C),
+ * Japanese commas and stops, and the full-width equals sign (ASCII `=` after
+ * NFKC). A mora-separating `=` still converts.
  */
 const DROPPED_CHARACTERS = new Set(['・', '〜', '~', '、', '。', '=']);
 
@@ -250,9 +249,9 @@ export function toRomajiForm(reading: string): string | null {
       continue;
     }
 
-    // っ doubles the following mora's consonant, except that ち becomes
-    // matcha rather than maccha; before a vowel or with nothing after it,
-    // it contributes nothing.
+    // っ doubles the following mora's onset, but before ch it adds `t` instead
+    // (まっちゃ → matcha, not maccha). Before a vowel or at the end it
+    // contributes nothing.
     if (character === 'っ') {
       const nextMora = lookupMora(characters, index + 1);
       if (nextMora) {
@@ -279,8 +278,8 @@ export function toRomajiForm(reading: string): string | null {
       continue;
     }
 
-    // ゝ/ゞ repeat the prior mora, the voiced form voicing it first. A yōon
-    // mora repeats whole (きゃゝ → kyakya), voicing its base kana (しゃゞ → ja).
+    // ゝ/ゞ repeat the prior mora, the voiced form (ゞ) voicing it first. A yōon
+    // mora repeats whole (きゃゝ → kyakya, しゃゞ → shaja).
     if (character === 'ゝ' || character === 'ゞ') {
       if (previousMoraKana !== null) {
         const [baseKana, ...restKana] = [...previousMoraKana];

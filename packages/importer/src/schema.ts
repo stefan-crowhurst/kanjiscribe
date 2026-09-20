@@ -12,23 +12,20 @@ function entryReadingTableExists(db: Database): boolean {
 }
 
 /**
- * Ensures the importer's tables and the romaji schema exist. 0001 is CREATE
- * TABLE IF NOT EXISTS, so a pre-feature database keeps its original
- * entry_reading shape; the shared helper adds the romaji column and index so
- * the reading insert cannot fail with "no such column". Backfilling is the
- * boot migration's job (the importer only writes the column on readings it
- * inserts).
+ * Ensures the importer's tables and the romaji schema: 0001 is CREATE TABLE IF
+ * NOT EXISTS, so a pre-feature database keeps its old `entry_reading` shape
+ * and the shared helper must add the romaji column before inserts can write
+ * it. Backfilling stays the boot migration's job — the importer only writes
+ * romaji on readings it inserts.
  */
 export function ensureSchema(db: Database, initialSchemaPath: string): void {
   if (!fs.existsSync(initialSchemaPath)) {
     throw new Error(`Migration file missing: ${initialSchemaPath}`);
   }
 
-  // 0001 creates idx_entry_reading_romaji on entry_reading(romaji), so on a
-  // pre-feature database the ensure must run before the schema is applied —
-  // the schema's CREATE INDEX would otherwise fail on the missing column. A
-  // fresh database has no table yet, so the schema creates it with romaji
-  // already in place.
+  // 0001's CREATE INDEX for idx_entry_reading_romaji needs the romaji column,
+  // so run the ensure before the schema on pre-feature databases. A fresh
+  // database has no table yet, so the schema creates it with romaji in place.
   if (entryReadingTableExists(db)) {
     ensureEntryReadingRomajiSchema(db);
   }

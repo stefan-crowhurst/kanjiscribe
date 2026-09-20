@@ -1,8 +1,7 @@
 /**
- * Structural SQLite surface shared by the API's boot migrations and the
- * importer's schema-ensure step. Both use better-sqlite3, but the shared
- * package deliberately does not depend on it: anything exposing `prepare`
- * and `exec` qualifies.
+ * Duck-typed SQLite surface shared by the API's boot migrations and the
+ * importer's schema-ensure step; the shared package avoids a better-sqlite3
+ * dependency, so anything exposing `prepare` and `exec` qualifies.
  */
 export interface SqliteSchemaDatabase {
   prepare(sql: string): { all(): unknown[] };
@@ -35,12 +34,10 @@ export function ensureIndex(
 }
 
 /**
- * Ensures the nullable `romaji` column and its index exist on
- * `entry_reading`. 0001 is CREATE TABLE IF NOT EXISTS, so a pre-feature
- * database keeps its original `entry_reading` shape; both the API's boot
- * migration and the importer's schema-ensure step call this before touching
- * romaji. This fixes the shape only — backfilling existing rows is the boot
- * migration's job (the importer writes romaji only on readings it inserts).
+ * Ensures the nullable `romaji` column and its index on `entry_reading`,
+ * called by both the API's boot migration and the importer's schema-ensure.
+ * Shape only — backfilling existing rows is the boot migration's job (the
+ * importer writes romaji only on readings it inserts).
  */
 export function ensureEntryReadingRomajiSchema(db: SqliteSchemaDatabase): void {
   ensureColumn(db, 'entry_reading', 'romaji', 'TEXT');

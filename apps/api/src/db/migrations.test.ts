@@ -93,8 +93,8 @@ describe('migrations', () => {
       );
     db.exec(preFeatureSchema);
 
-    // Guard the fixture surgery: if 0001's formatting changes, the replaces
-    // above silently no-op and this test stops exercising the pre-feature path.
+    // If 0001's formatting changes, these replaces silently no-op and the
+    // test stops exercising the pre-feature path.
     const preFeatureColumns = db
       .prepare('PRAGMA table_info(entry_reading)')
       .all() as Array<{ name: string }>;

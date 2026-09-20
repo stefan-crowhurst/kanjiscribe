@@ -49,12 +49,9 @@ export async function runMigrationsOnDb(db: Database, log = false): Promise<void
     const filePath = path.join(migrationsDir, file);
 
     if (file.endsWith('.sql')) {
-      // 0001 is the fresh-database bootstrap: every statement in it is
-      // CREATE ... IF NOT EXISTS, so applying it to an existing database
-      // was always a no-op — until it grew statements referencing columns
-      // that only later migrations add (idx_entry_reading_romaji on the
-      // romaji column ensured by 0008). Skip it on non-fresh databases;
-      // their schema changes come from the numbered migrations below.
+      // Skip 0001 on non-fresh databases: its idx_entry_reading_romaji index
+      // targets a column only 0008 adds. Its other statements are all
+      // CREATE ... IF NOT EXISTS, already no-ops on an existing database.
       if (file === INITIAL_SCHEMA_FILE && !isFreshDatabase(db)) {
         continue;
       }

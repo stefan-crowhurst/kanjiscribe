@@ -6,14 +6,11 @@ const TABLE = 'entry_reading';
 const COLUMN = 'romaji';
 
 /**
- * Adds the nullable `romaji` column and its index to `entry_reading` (the
- * schema part is shared with the importer) and backfills the column with each
- * reading's Romaji form (ADR 0011). Degenerate readings (bare ー, 〜,
- * iteration marks) stay NULL. The migration runner re-runs every file on
- * every boot, so both the schema change and the backfill are idempotent:
- * only rows whose `romaji` is still NULL are considered each run, so a
- * degenerate reading is re-selected and recomputed to NULL, but no stored
- * value ever changes.
+ * Adds the nullable `romaji` column and index to `entry_reading` (schema shared
+ * with the importer) and backfills each reading's Romaji form (ADR 0011);
+ * degenerate readings (bare ー, 〜, iteration marks) stay NULL. Re-run every
+ * boot, so only rows with `romaji` IS NULL are touched — idempotent, and no
+ * stored value ever changes.
  */
 export function run(db: Database): void {
   ensureEntryReadingRomajiSchema(db);

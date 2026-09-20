@@ -1,7 +1,7 @@
 /**
- * Macrons expand to the literal kana-sequence vowels the stored **Romaji
- * form** uses (ADR 0011): long あ/い/う sounds are written out, and え/お
- * sounds follow the kana sequence (ē → ei, ō → ou) rather than a length mark.
+ * Macrons expand to the literal kana-sequence vowels the stored **Romaji form**
+ * uses (ADR 0011). あ/い/う long sounds are written out; え/お follow the kana
+ * sequence (ē → ei, ō → ou) rather than a length mark.
  */
 const MACRON_EXPANSIONS = new Map([
   ['ā', 'aa'],
@@ -14,12 +14,10 @@ const MACRON_EXPANSIONS = new Map([
 const APOSTROPHES = /['’]/g;
 
 /**
- * Clean a Latin query before it is matched against the stored **Romaji form**
- * (ADR 0011): lowercase-fold, strip apostrophes, and expand macrons to literal
- * kana-sequence vowels. Pure and total — input needing no cleaning passes
- * through unchanged, and this is input hygiene, not loose matching (tokyo and
- * kohi stay non-matches). Particle-alternate generation (`romajiQueryVariants`)
- * builds on the cleaned query.
+ * Cleans a Latin query before matching the stored **Romaji form** (ADR 0011):
+ * lowercase-fold, strip apostrophes, expand macrons to literal kana-sequence
+ * vowels. Purely hygienic — `tokyo`/`kohi` stay non-matches — and
+ * `romajiQueryVariants` builds on the result.
  */
 export function cleanRomajiQuery(query: string): string {
   return query
@@ -30,9 +28,9 @@ export function cleanRomajiQuery(query: string): string {
 
 /**
  * One query string to match against the stored **Romaji form**, plus whether
- * only the exact strategy applies. `exactOnly` exists for whole queries of
- * exactly `wa`/`wo`/`e`, where the particle alternate must not become a prefix
- * scan (`ha%` would match every reading starting with は, ADR 0011).
+ * only the exact strategy applies. `exactOnly` guards whole-query
+ * `wa`/`wo`/`e` alternates, which must not become `ha%`-style prefix scans
+ * (ADR 0011).
  */
 export type RomajiQueryVariant = { value: string; exactOnly?: boolean };
 
@@ -50,18 +48,11 @@ const MAX_ALTERNATES = 16;
 type Substitution = { index: number; from: string; to: string };
 
 /**
- * Particle substitutions for the cleaned query (ADR 0011): the stored Romaji
- * form is kana-literal, so particles are found by trying the pronunciation or
- * IME-typing form as an alternate. Non-initial `wa`→`ha` (は), `wo`→`o` (を
- * stores as `o`), and standalone non-initial `e`→`he` (へ) — an `e` is
- * standalone when the character before it is a vowel, so `te`/`de`/`hone`
- * stay untouched (the accepted ん gap in ADR 0011). A `wa` followed by a vowel
- * is almost always inside a word, not a particle, so `kawaii` stays whole.
- * Word-initial occurrences are never substituted, keeping wakaru/warau
- * noise-free. `exactStoredReading` is true when the cleaned query is itself an
- * exact stored reading (いえ/うえ/こえ/まえ); raising it disables only the
- * standalone `e`→`he` substitution, because that `e` belongs to the word, not
- * the particle へ, and the alternate would pull a lookalike in via its prefix.
+ * Particle alternates for the cleaned query (ADR 0011): non-initial `wa`→`ha`,
+ * `wo`→`o`, and `e`→`he` when `e` follows a vowel, but never word-initial and
+ * never `wa` before a vowel (`kawaii` stays whole). `exactStoredReading` drops
+ * only the `e`→`he` alternate when the query is itself a stored reading
+ * (いえ/うえ/こえ/まえ), whose final `e` is part of the word, not へ.
  */
 function eligibleSubstitutions(query: string, exactStoredReading: boolean): Substitution[] {
   const substitutions: Substitution[] = [];
@@ -78,20 +69,13 @@ function eligibleSubstitutions(query: string, exactStoredReading: boolean): Subs
 }
 
 /**
- * Build the cleaned query plus its particle alternates (ADR 0011). The cleaned
- * query always comes first and uses both exact and prefix strategies. Every
- * non-empty subset of the eligible particle substitutions yields one alternate,
- * enumerated by ascending bitmask over the eligible positions (left to right)
- * and applied right-to-left so earlier indices stay valid. Alternates are
- * deduplicated and capped at 16. A whole query of exactly `wa`, `wo`, or `e`
- * gets its alternate marked `exactOnly`.
- *
- * `options.exactStoredReading` drops the standalone `e`→`he` substitution
- * (wa→ha and wo→o are unaffected) when the cleaned query is itself an exact
- * stored reading — a real word like いえ/うえ/こえ/まえ whose final `e` is
- * part of the word, not the particle へ. Without the guard, `ie` would pull
- * いへん (異変) in via the `ihe%` prefix. Recall phrases with no exact stored
- * match (もとへ etc.) still get the alternate.
+ * Builds the cleaned query plus its particle alternates: every non-empty
+ * subset of eligible substitutions becomes a variant (bitmask over the
+ * positions, applied right-to-left, deduplicated, capped at 16), and a
+ * whole-query `wa`/`wo`/`e` alternate is marked `exactOnly`. With
+ * `options.exactStoredReading` the standalone `e`→`he` alternate is dropped
+ * when the query is itself a stored reading (いえ/うえ/こえ/まえ) — without it
+ * `ie` would pull いへん (異変) in via the `ihe%` prefix.
  */
 export function romajiQueryVariants(
   query: string,
@@ -99,8 +83,8 @@ export function romajiQueryVariants(
 ): RomajiQueryVariant[] {
   const cleaned = cleanRomajiQuery(query);
   if (cleaned === '') {
-    // Cleaning reduced the query to nothing (e.g. a lone apostrophe). There is
-    // no romaji to match, and a `%` prefix scan would match every reading.
+    // Cleaning reduced the query to nothing (e.g. a lone apostrophe), and an
+    // empty `%` prefix scan would then match every reading.
     return [];
   }
   const variants: RomajiQueryVariant[] = [{ value: cleaned }];
