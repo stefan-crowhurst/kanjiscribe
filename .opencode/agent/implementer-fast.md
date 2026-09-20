@@ -36,10 +36,6 @@ Load the `implement` skill via the skill tool at the start of your run and follo
 - Reuse existing shared helpers and components before creating new ones.
 - If the issue involves API fields, they should already exist — your job is rendering, not changing the API (flag it in your final message if a field you need is genuinely missing).
 
-## Seeing images
-
-You have native vision. Read images (screenshots, diagrams, mockups, UI renders, charts) referenced by the issue, PRD, or code directly with the Read tool — do not delegate to a subagent.
-
 ## Verify before finishing
 
 Run, from the repo root, and fix everything they surface:

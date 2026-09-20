@@ -37,10 +37,6 @@ Load the `implement` skill via the skill tool at the start of your run and follo
 - Seed test data via `apps/api/src/test-helpers.ts`, following the prior art in `apps/api/src/*.test.ts`.
 - If the issue says existing tests need rework, rework them to the new semantics without weakening their assertions.
 
-## Seeing images
-
-You have native vision. Read images (screenshots, diagrams, mockups, UI renders, charts) referenced by the issue, PRD, or code directly with the Read tool — do not delegate to a subagent.
-
 ## Verify before finishing
 
 Run, from the repo root, and fix everything they surface:
