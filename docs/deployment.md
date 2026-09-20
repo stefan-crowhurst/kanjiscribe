@@ -23,6 +23,7 @@ A release stages a complete instance from the dev build and swaps it into place 
 ## Directory Layout
 
 This guide assumes:
+
 - **Dev / build source**: `/media/default/ssd/dev/kanjiscribe`
 - **Production target (the live instance)**: `/media/default/ssd/prod/kanjiscribe`
 - **Data** (database + SVGs): `/media/default/ssd/prod/kanjiscribe/data`
@@ -38,11 +39,12 @@ cd /media/default/ssd/dev/kanjiscribe
 ```
 
 This:
+
 1. Installs dependencies
 2. Builds the shared package
 3. Builds the web frontend (with `VITE_API_BASE=http://raspberrypi:$KANJISCRIBE_API_PORT` — API calls go to the Pi's Tailscale host name, not a relative path)
 4. Bundles the API with `esbuild` into `apps/api/dist/server.js`
-5. Copies SQL migration files into `apps/api/dist/db/sql/`
+5. Copies SQL migrations and bundles TypeScript migrations into `apps/api/dist/db/sql/`
 
 The release script runs this build itself by default, so on a normal release this step is optional — run it manually only for the manual update path (see [updating.md](updating.md)).
 
@@ -181,7 +183,7 @@ The live instance is one directory among several that the release script manages
 └── kanjiscribe.staging/                          # staging instance (only mid-release)
 ```
 
-- **Release backup** — `kanjiscribe-release-<TS>`: the pre-release live instance, renamed aside by the swap (the backup *is* the rename — never a copy). A full instance: code, data, systemd unit, docs. Rollback restores from it.
+- **Release backup** — `kanjiscribe-release-<TS>`: the pre-release live instance, renamed aside by the swap (the backup _is_ the rename — never a copy). A full instance: code, data, systemd unit, docs. Rollback restores from it.
 - **Staging instance** — `kanjiscribe.staging`: the complete new instance assembled before the swap. Normally exists only for the seconds a release is running; a leftover from a crashed run aborts the next release until removed with `--force`.
 - **Failed instance** — `kanjiscribe-failed-<TS>`: an instance that failed health verification and was swapped back out, kept whole for inspection.
 
@@ -202,13 +204,13 @@ A single-slot backup directory (e.g. `kanjiscribe-manual-backup`) may sit next t
 
 ## Environment Variables Reference
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `KANJISCRIBE_API_PORT` | `52654` | Port the API/web server listens on |
-| `KANJISCRIBE_API_HOST` | `0.0.0.0` | Address to bind to |
+| Variable               | Default                       | Description                           |
+| ---------------------- | ----------------------------- | ------------------------------------- |
+| `KANJISCRIBE_API_PORT` | `52654`                       | Port the API/web server listens on    |
+| `KANJISCRIBE_API_HOST` | `0.0.0.0`                     | Address to bind to                    |
 | `KANJISCRIBE_DATA_DIR` | `data/` relative to repo root | Sets both DB path and SVG dir at once |
-| `KANJISCRIBE_DB_PATH` | `$DATA_DIR/kanjiscribe.db` | Override for database file path |
-| `KANJI_SVG_DIR` | `$DATA_DIR/kanji-svg` | Override for KanjiVG SVG directory |
+| `KANJISCRIBE_DB_PATH`  | `$DATA_DIR/kanjiscribe.db`    | Override for database file path       |
+| `KANJI_SVG_DIR`        | `$DATA_DIR/kanji-svg`         | Override for KanjiVG SVG directory    |
 
 ## Security Notes
 

@@ -25,7 +25,7 @@ The performance of a `completed` assignment against its **estimate snapshot**: `
 _Avoid_: variance, pace
 
 **Day estimate delta**:
-The day-level aggregate: Σ(time_spent_ms − estimated_ms) over a day's completed, snapshotted assignments. Displayed only when the day is strictly fully completed (`is_fully_completed`: no pending, no skipped, at least one completed) **and** every completed assignment has a snapshot — the verdict is final and complete, or not shown at all. Applies uniformly to every day-level surface (dashboard Today Time card, Today page, day detail header, heatmap cell outline and tooltip). Per-word deltas are final as soon as the word completes and are not gated.
+The day-level aggregate: Σ(`time_spent_ms − estimated_ms`) over a day's completed, snapshotted assignments. Displayed only when the day is strictly fully completed (`is_fully_completed`: no pending, no skipped, at least one completed) **and** every completed assignment has a snapshot — the verdict is final and complete, or not shown at all. Applies uniformly to every day-level surface (dashboard Today Time card, Today page, day detail header, heatmap cell outline and tooltip). Per-word deltas are final as soon as the word completes and are not gated.
 _Avoid_: day pace, day score
 
 **Day estimate**:
@@ -37,7 +37,7 @@ The predicted drilling time remaining for a set of assignments: actual recorded 
 _Avoid_: predicted time, budget (use "budget" only for a full-day total that ignores actuals)
 
 **Writing cell model**:
-The physical layout used when drilling a word by hand: 10 fixed cells. One kanji occupies one cell; up to two *adjacent* kana share one cell. One **clean copy** of the word is laid out left-to-right; the cell cost of a clean copy determines how many full copies fit (`floor(10 / cell_cost)`), and any leftover cells are **remainder-filled** with the word's highest-write-time characters — kanji one-per-cell (repetition allowed), kana two-per-cell.
+The physical layout used when drilling a word by hand: 10 fixed cells. One kanji occupies one cell; up to two _adjacent_ kana share one cell. One **clean copy** of the word is laid out left-to-right; the cell cost of a clean copy determines how many full copies fit (`floor(10 / cell_cost)`), and any leftover cells are **remainder-filled** with the word's highest-write-time characters — kanji one-per-cell (repetition allowed), kana two-per-cell.
 _Avoid_: grid, slot (use "cell")
 
 **Reading-writing** (drill convention):
@@ -45,7 +45,7 @@ On the **first clean copy** of an assignment, the word's reading is written out 
 _Avoid_: furigana (that's a typography concept; this is handwriting), annotation
 
 **Per-kanji write time**:
-The derived time to write a single kanji once, observed indirectly from word-level `time_spent_ms` via **stroke-weighted attribution**: subtract the kana time (1 s per kana write, counting both surface kana writes and reading-writing kana writes) from the word's total, then split the remaining **kanji time pool** across the word's kanji in proportion to each kanji's (writes × stroke_count). Aggregated across all completed assignments containing that kanji.
+The derived time to write a single kanji once, observed indirectly from word-level `time_spent_ms` via **stroke-weighted attribution**: subtract the kana time (1 s per kana write, counting both surface kana writes and reading-writing kana writes) from the word's total, then split the remaining **kanji time pool** across the word's kanji in proportion to each kanji's (writes × `stroke_count`). Aggregated across all completed assignments containing that kanji.
 _Avoid_: per-char time, stroke time
 
 **Per-stroke coefficient**:
@@ -140,6 +140,7 @@ The set of assignments for a given `assigned_for_date` that are not `archived`, 
 A day whose non-`archived` assignments contain no `pending`/`skipped` rows **and** at least one `completed` row. A day with zero assignments (all archived) is **not** fully completed — it is an empty day (see ghost-completed day ADR). Enforced by the `v_day_summary.is_fully_completed` view column.
 
 **Backing list views**:
+
 - **Today** — assignments scheduled for today.
 - **Day detail** — assignments for a chosen day (day-in-the-past or today).
 - **Backlog** — unfinished assignments across all days (`pending` or `skipped`).

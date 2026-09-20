@@ -25,6 +25,9 @@ export function findMigrationsDir(baseDir: string): string | null {
   return migrationsDirCandidates(baseDir).find((dir) => fs.existsSync(dir)) ?? null;
 }
 
+/** The initial schema is fresh-database-only; upgrades land in numbered migrations. */
+const INITIAL_SCHEMA_FILE = '0001_initial.sql';
+
 export async function runMigrationsOnDb(db: Database, log = false): Promise<void> {
   const migrationsDir = findMigrationsDir(__dirname);
   if (!migrationsDir) {
@@ -46,6 +49,15 @@ export async function runMigrationsOnDb(db: Database, log = false): Promise<void
     const filePath = path.join(migrationsDir, file);
 
     if (file.endsWith('.sql')) {
+      // 0001 is the fresh-database bootstrap: every statement in it is
+      // CREATE ... IF NOT EXISTS, so applying it to an existing database
+      // was always a no-op — until it grew statements referencing columns
+      // that only later migrations add (idx_entry_reading_romaji on the
+      // romaji column ensured by 0008). Skip it on non-fresh databases;
+      // their schema changes come from the numbered migrations below.
+      if (file === INITIAL_SCHEMA_FILE && !isFreshDatabase(db)) {
+        continue;
+      }
       const sql = fs.readFileSync(filePath, 'utf-8');
       db.exec(sql);
     } else {
@@ -61,4 +73,14 @@ export async function runMigrationsOnDb(db: Database, log = false): Promise<void
       console.log(`Applied migration ${file}`);
     }
   }
+}
+
+/** A fresh database has no tables yet; anything else is an existing install. */
+function isFreshDatabase(db: Database): boolean {
+  const row = db
+    .prepare(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1`
+    )
+    .get();
+  return row === undefined;
 }

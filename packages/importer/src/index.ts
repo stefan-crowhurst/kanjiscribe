@@ -1,14 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import zlib from 'node:zlib';
 
-import { collapseEntryReadings, foldReadingToHiragana } from '@kanjiscribe/shared';
+import { collapseEntryReadings, foldReadingToHiragana, toRomajiForm } from '@kanjiscribe/shared';
 import Database from 'better-sqlite3';
 import { XMLParser } from 'fast-xml-parser';
 import sax from 'sax';
 import unzipper from 'unzipper';
 import { z } from 'zod';
+
+import { ensureSchema } from './schema.js';
 
 type ImportDataset = 'jmdict' | 'kanjidic2' | 'kanjivg';
 
@@ -33,14 +35,6 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function ensureMigrations(): void {
-  const migrationPath = path.resolve(REPO_ROOT, 'apps/api/src/db/sql/0001_initial.sql');
-  if (!fs.existsSync(migrationPath)) {
-    throw new Error(`Migration file missing: ${migrationPath}`);
-  }
-  db.exec(fs.readFileSync(migrationPath, 'utf8'));
-}
-
 function readMaybeGzip(filePath: string): string {
   const bytes = fs.readFileSync(filePath);
   if (filePath.endsWith('.gz')) {
@@ -49,7 +43,11 @@ function readMaybeGzip(filePath: string): string {
   return bytes.toString('utf8');
 }
 
-function beginRun(dataset: ImportDataset, sourceFile: string, sourceVersion: string | null = null): number {
+function beginRun(
+  dataset: ImportDataset,
+  sourceFile: string,
+  sourceVersion: string | null = null
+): number {
   const result = db
     .prepare(
       `
@@ -278,7 +276,7 @@ function importKanjidic2(sourceFile: string): void {
             for (const reading of asArray(group.reading)) {
               const text =
                 typeof reading === 'string' ? reading : String(reading['#text'] ?? '').trim();
-              const type = typeof reading === 'string' ? '' : reading['@_r_type'] ?? '';
+              const type = typeof reading === 'string' ? '' : (reading['@_r_type'] ?? '');
               if (!text) {
                 continue;
               }
@@ -351,7 +349,7 @@ type JmEntry = {
   }>;
 };
 
-function importJmdict(sourceFile: string): Promise<void> {
+export function importJmdict(sourceFile: string): Promise<void> {
   const runId = beginRun('jmdict', sourceFile);
   const progress = createProgressReporter('JMdict');
   let processed = 0;
@@ -370,7 +368,9 @@ function importJmdict(sourceFile: string): Promise<void> {
 
   const deleteEntrySpellings = db.prepare(`DELETE FROM entry_spelling WHERE entry_id = ?`);
   const deleteEntryReadings = db.prepare(`DELETE FROM entry_reading WHERE entry_id = ?`);
-  const deleteEntryRestrictions = db.prepare(`DELETE FROM entry_reading_spelling WHERE entry_id = ?`);
+  const deleteEntryRestrictions = db.prepare(
+    `DELETE FROM entry_reading_spelling WHERE entry_id = ?`
+  );
   const deleteEntrySenses = db.prepare(`DELETE FROM entry_sense WHERE entry_id = ?`);
 
   const insertSpelling = db.prepare(
@@ -382,8 +382,8 @@ function importJmdict(sourceFile: string): Promise<void> {
 
   const insertReading = db.prepare(
     `
-    INSERT INTO entry_reading (entry_id, text, is_primary, no_kanji)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO entry_reading (entry_id, text, is_primary, no_kanji, romaji)
+    VALUES (?, ?, ?, ?, ?)
     `
   );
 
@@ -415,7 +415,10 @@ function importJmdict(sourceFile: string): Promise<void> {
 
     for (const entry of entries) {
       try {
-        const allPri = [...entry.spellings.flatMap((s) => s.pri), ...entry.readings.flatMap((r) => r.pri)];
+        const allPri = [
+          ...entry.spellings.flatMap((s) => s.pri),
+          ...entry.readings.flatMap((r) => r.pri)
+        ];
         const isCommon = allPri.some((tag) => commonTagSet.has(tag));
         const entryPriority = extractNfRank(allPri);
 
@@ -426,7 +429,12 @@ function importJmdict(sourceFile: string): Promise<void> {
         deleteEntrySenses.run(entry.id);
 
         entry.spellings.forEach((spelling, index) => {
-          insertSpelling.run(entry.id, spelling.text, index === 0 ? 1 : 0, extractNfRank(spelling.pri));
+          insertSpelling.run(
+            entry.id,
+            spelling.text,
+            index === 0 ? 1 : 0,
+            extractNfRank(spelling.pri)
+          );
         });
 
         // Collapse hiragana/katakana twins of one reading identity (ADR 0010):
@@ -453,7 +461,13 @@ function importJmdict(sourceFile: string): Promise<void> {
 
         collapsedReadings.forEach((text, index) => {
           const original = entry.readings.find((reading) => reading.text === text);
-          insertReading.run(entry.id, text, index === 0 ? 1 : 0, original?.noKanji ? 1 : 0);
+          insertReading.run(
+            entry.id,
+            text,
+            index === 0 ? 1 : 0,
+            original?.noKanji ? 1 : 0,
+            toRomajiForm(text)
+          );
           for (const restrictedSpelling of restrictionsBySurvivor.get(text) ?? []) {
             insertReadingSpelling.run(entry.id, text, restrictedSpelling);
           }
@@ -528,7 +542,12 @@ function importJmdict(sourceFile: string): Promise<void> {
 
       let currentEntry: JmEntry | null = null;
       let currentSpelling: { text: string; pri: string[] } | null = null;
-      let currentReading: { text: string; noKanji: boolean; restr: string[]; pri: string[] } | null = null;
+      let currentReading: {
+        text: string;
+        noKanji: boolean;
+        restr: string[];
+        pri: string[];
+      } | null = null;
       let currentSense: JmEntry['senses'][number] | null = null;
       let currentText = '';
 
@@ -761,7 +780,7 @@ async function importKanjiVg(sourcePath: string, sourceVersion = 'unknown'): Pro
 }
 
 async function main() {
-  ensureMigrations();
+  ensureSchema(db, path.resolve(REPO_ROOT, 'apps/api/src/db/sql/0001_initial.sql'));
   const [command, ...rest] = process.argv.slice(2);
 
   if (!command) {
@@ -806,4 +825,9 @@ async function main() {
   }
 }
 
-await main();
+const isCliEntryPoint =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isCliEntryPoint) {
+  await main();
+}

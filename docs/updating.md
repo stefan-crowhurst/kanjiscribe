@@ -19,7 +19,7 @@ The release pipeline runs in this order:
 2. **Stage** — assembles a complete **Staging instance** at `<target>.staging`: the API bundle, the built frontend, the systemd unit, the docs, and the production-only native dependency (`better-sqlite3`) installed with npm inside staging. A stale staging directory from a crashed run aborts the release (exit 2); re-run with `--force` to remove it and proceed.
 3. **Stop** — stops the systemd service so the data copy captures a clean, WAL-checkpointed database. A stop failure aborts the release (exit 4) before any data copy or swap.
 4. **Copy data** — copies the live instance's `data/` into staging. The dev repository's `data/` is never a source for an update: the staging instance inherits the live instance's data, and migrations run against it at service boot exactly as they always have. If WAL sidecar files (`kanjiscribe.db-wal`, `kanjiscribe.db-shm`) survive the stop, they are copied too and a WARNING is printed — pending writes are never silently dropped.
-5. **Swap** — the **Instance swap**: two atomic renames (ADR-0009). The live instance is renamed aside and becomes the **Release backup** `<target-basename>-release-<TS>` (the backup *is* the rename — no copy, and the live directory is never in a half-updated state); the staging instance renames into the live slot. An interruption can only ever leave the old or the new instance live, never a mixture.
+5. **Swap** — the **Instance swap**: two atomic renames (ADR-0009). The live instance is renamed aside and becomes the **Release backup** `<target-basename>-release-<TS>` (the backup _is_ the rename — no copy, and the live directory is never in a half-updated state); the staging instance renames into the live slot. An interruption can only ever leave the old or the new instance live, never a mixture.
 6. **Start** — starts the service.
 7. **Verify** — polls `http://localhost:<port>/health` every 2 seconds with a 30-second budget (HTTP 200 = success). On failure the script **auto-rolls back**: the broken instance is moved aside as a **Failed instance** (`<target-basename>-failed-<TS>`, kept for inspection) and the release backup is restored into the live slot, then the service is restarted. The release exits 6. With `--no-auto-rollback` the failed release stays live for inspection and the script prints the rollback command to run manually.
 
@@ -27,15 +27,15 @@ When run as root, the staged and swapped directories are chowned to the invoking
 
 ### Release flags
 
-| Flag | Default | Effect |
-|------|---------|--------|
-| `--service NAME` | `kanjiscribe` | systemd service name to stop/start |
-| `--health-port PORT` | `52654` | localhost port used for the `/health` check |
-| `--skip-service` | off | skip all service management (stop, start, health polling) — use for instances without a systemd unit |
-| `--no-build` | off | skip the build and stage the already-built artifacts from the dev repository |
-| `--no-auto-rollback` | off | leave a failed release live for inspection instead of rolling back |
-| `--force` | off | remove a stale staging directory and proceed |
-| `--keep N` | `3` | keep the N most recent release backups (positive integer) |
+| Flag                 | Default       | Effect                                                                                               |
+| -------------------- | ------------- | ---------------------------------------------------------------------------------------------------- |
+| `--service NAME`     | `kanjiscribe` | systemd service name to stop/start                                                                   |
+| `--health-port PORT` | `52654`       | localhost port used for the `/health` check                                                          |
+| `--skip-service`     | off           | skip all service management (stop, start, health polling) — use for instances without a systemd unit |
+| `--no-build`         | off           | skip the build and stage the already-built artifacts from the dev repository                         |
+| `--no-auto-rollback` | off           | leave a failed release live for inspection instead of rolling back                                   |
+| `--force`            | off           | remove a stale staging directory and proceed                                                         |
+| `--keep N`           | `3`           | keep the N most recent release backups (positive integer)                                            |
 
 The build script path can be overridden with the `KANJISCRIBE_BUILD_SCRIPT` environment variable (used by the test suite).
 
@@ -55,33 +55,33 @@ On a fresh install in service mode, the systemd unit must already be registered:
 
 - `list` prints the managed siblings newest first as `name<TAB>timestamp<TAB>kind` — release backups first (kind `release`; the timestamp column is the exact value to pass to `rollback --backup`), then failed instances (kind `failed`, for inspection only).
 - `rollback` restores the newest release backup by default, or the one named by `--backup <TS>`. An unknown or invalid selector exits 7 and changes nothing.
-- Rollback is always a **full instance restore** — code *and* data — via a rename swap: the current live instance moves aside as a new release backup and the chosen backup renames into the live slot. Study data recorded since the release is discarded.
+- Rollback is always a **full instance restore** — code _and_ data — via a rename swap: the current live instance moves aside as a new release backup and the chosen backup renames into the live slot. Study data recorded since the release is discarded.
 - The `rollback` subcommand does not manage the service itself — only the automatic rollback after a failed verification restarts the service. After a scripted rollback, stop and start the service by hand (`sudo systemctl restart kanjiscribe`) so it runs the restored code.
 
 ## Naming and retention
 
 Directories the script manages (all siblings of the live instance, same filesystem):
 
-| Kind | Name | Retention |
-|------|------|-----------|
-| Release backup | `<target-basename>-release-<TS>` | the 3 newest are kept (`--keep N` overrides) |
-| Staging instance | `<target>.staging` | removed on abort; consumed by the swap |
-| Failed instance | `<target-basename>-failed-<TS>` | the 1 newest is kept |
+| Kind             | Name                             | Retention                                    |
+| ---------------- | -------------------------------- | -------------------------------------------- |
+| Release backup   | `<target-basename>-release-<TS>` | the 3 newest are kept (`--keep N` overrides) |
+| Staging instance | `<target>.staging`               | removed on abort; consumed by the swap       |
+| Failed instance  | `<target-basename>-failed-<TS>`  | the 1 newest is kept                         |
 
 `<TS>` is `YYYYmmdd-HHMMSS` (lexically sortable). Matching is anchored — a literal prefix plus a strictly numeric timestamp — so pruning only ever considers the script's own directories. Anything else sitting next to the live instance (for example a legacy manual-backup directory) is never listed, pruned, or overwritten. Pruning deletes whole backup directories.
 
 ## Exit codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | success |
-| 1 | usage error (missing/extra arguments, unknown flag) |
-| 2 | guard failure (target not an instance, dev repository root, stale staging, missing parent of a fresh-install target, no release backups available for a selector-less rollback) |
-| 3 | build failure |
-| 4 | service stop failure |
-| 5 | data copy failure |
-| 6 | health verification failure / auto-rollback performed |
-| 7 | rollback failure (unknown or invalid backup selector) |
+| Code | Meaning                                                                                                                                                                         |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | success                                                                                                                                                                         |
+| 1    | usage error (missing/extra arguments, unknown flag)                                                                                                                             |
+| 2    | guard failure (target not an instance, dev repository root, stale staging, missing parent of a fresh-install target, no release backups available for a selector-less rollback) |
+| 3    | build failure                                                                                                                                                                   |
+| 4    | service stop failure                                                                                                                                                            |
+| 5    | data copy failure                                                                                                                                                               |
+| 6    | health verification failure / auto-rollback performed                                                                                                                           |
+| 7    | rollback failure (unknown or invalid backup selector)                                                                                                                           |
 
 Every failure class prints a clear `[error]` message to stderr and leaves the live instance untouched whenever the failure occurs before the swap.
 
@@ -196,7 +196,8 @@ find /media/default/ssd/prod -maxdepth 1 -type d -name 'kanjiscribe-failed-*' \
 
 ## Notes
 
-- **Migrations**: The API server runs migrations automatically on every boot (`CREATE TABLE IF NOT EXISTS` style). You do not need to run `pnpm --filter @kanjiscribe/api db:migrate` manually — the server handles it, against the live instance's data.
+- **Migrations**: The API server runs migrations automatically on every boot, against the live instance's data — you do not need to run `pnpm --filter @kanjiscribe/api db:migrate` manually. The initial schema (`0001_initial.sql`) is for fresh databases only; an existing instance takes its schema changes from the numbered migrations, which are written to be re-runnable.
+- **Romaji reading cache**: Existing databases get the derived `entry_reading.romaji` cache automatically at service boot: migration `0008_entry_reading_romaji.ts` adds the column if it is missing, creates its index, and backfills every reading whose `romaji` is still `NULL`. No manual JMdict re-import is required after an update, and re-running the import remains safe and idempotent.
 - **Import data updates**: If upstream datasets (JMdict, KANJIDIC2, KanjiVG) have been updated and you want to refresh, re-run the importer commands. This is safe because imports use `INSERT OR REPLACE` / upsert semantics — existing study data and assignments are preserved.
 - **WAL checkpointing**: On shutdown the server runs `PRAGMA wal_checkpoint(TRUNCATE)` to flush the write-ahead log and remove the `-wal` and `-shm` files from the data directory. This keeps the database clean — and is why the release pipeline copies the live data only after the service has stopped.
 - **Data directory**: An update copies the live instance's data into the staging instance; the dev repository's `data/` is never a source for updates, and migrations run against the live data at service boot. The dev repository's data participates only in the documented first-time dataset import, never in a release.

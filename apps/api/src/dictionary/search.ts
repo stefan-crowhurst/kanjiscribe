@@ -8,6 +8,7 @@ import {
 
 import { todayIsoDate } from '../config.js';
 import { sqlite } from '../db/client.js';
+import { cleanRomajiQuery, romajiQueryVariants } from './romaji-query.js';
 
 const MATCH_PRIORITY: Record<DictionaryMatchType, number> = {
   exact_spelling: 0,
@@ -16,21 +17,65 @@ const MATCH_PRIORITY: Record<DictionaryMatchType, number> = {
   prefix_reading: 3
 };
 
+type Strategy = { type: DictionaryMatchType; sql: string; value: string };
+
+type SearchColumn = { table: string; column: string };
+
+const SPELLING_TEXT: SearchColumn = { table: 'entry_spelling', column: 'text' };
+const READING_TEXT: SearchColumn = { table: 'entry_reading', column: 'text' };
+const READING_ROMAJI: SearchColumn = { table: 'entry_reading', column: 'romaji' };
+
+/**
+ * Escape LIKE metacharacters so a romaji query containing `%` or `_` is
+ * matched literally, not as a wildcard (`%` as a query must not scan every
+ * row). Only the romaji strategies escape: they are user-typed Latin input,
+ * while spelling/kana matching deliberately keeps its pre-existing wildcard
+ * semantics.
+ */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
+function exactStrategy(column: SearchColumn, type: DictionaryMatchType, value: string): Strategy {
+  return {
+    type,
+    sql: `SELECT DISTINCT entry_id FROM ${column.table} WHERE ${column.column} = ? LIMIT 50`,
+    value
+  };
+}
+
+/**
+ * Prefix match that intentionally keeps raw LIKE wildcard semantics (`%`/`_`
+ * in the value act as wildcards). Used for spelling and kana queries; romaji
+ * queries use `escapedPrefixStrategy` instead.
+ */
+function prefixStrategy(column: SearchColumn, type: DictionaryMatchType, value: string): Strategy {
+  return {
+    type,
+    sql: `SELECT DISTINCT entry_id FROM ${column.table} WHERE ${column.column} LIKE ? LIMIT 50`,
+    value: `${value}%`
+  };
+}
+
+function escapedPrefixStrategy(
+  column: SearchColumn,
+  type: DictionaryMatchType,
+  value: string
+): Strategy {
+  return {
+    type,
+    sql: `SELECT DISTINCT entry_id FROM ${column.table} WHERE ${column.column} LIKE ? ESCAPE '\\' LIMIT 50`,
+    value: `${escapeLike(value)}%`
+  };
+}
+
 export function searchDictionary(query: string): DictionarySearchResult[] {
   const today = todayIsoDate();
   const matches = new Map<number, DictionaryMatchType>();
 
-  const strategies: Array<{ type: DictionaryMatchType; sql: string; value: string }> = [
-    {
-      type: 'exact_spelling',
-      sql: `SELECT DISTINCT entry_id FROM entry_spelling WHERE text = ? LIMIT 50`,
-      value: query
-    },
-    {
-      type: 'prefix_spelling',
-      sql: `SELECT DISTINCT entry_id FROM entry_spelling WHERE text LIKE ? LIMIT 50`,
-      value: `${query}%`
-    }
+  const strategies: Strategy[] = [
+    exactStrategy(SPELLING_TEXT, 'exact_spelling', query),
+    prefixStrategy(SPELLING_TEXT, 'prefix_spelling', query)
   ];
 
   // Reading queries are script-insensitive (ADR 0010): the raw query plus the
@@ -42,16 +87,32 @@ export function searchDictionary(query: string): DictionarySearchResult[] {
     new Set([query, foldReadingToHiragana(query), foldReadingToKatakana(query)])
   );
   for (const queryFold of queryFolds) {
-    strategies.push({
-      type: 'exact_reading',
-      sql: `SELECT DISTINCT entry_id FROM entry_reading WHERE text = ? LIMIT 50`,
-      value: queryFold
-    });
-    strategies.push({
-      type: 'prefix_reading',
-      sql: `SELECT DISTINCT entry_id FROM entry_reading WHERE text LIKE ? LIMIT 50`,
-      value: `${queryFold}%`
-    });
+    strategies.push(exactStrategy(READING_TEXT, 'exact_reading', queryFold));
+    strategies.push(prefixStrategy(READING_TEXT, 'prefix_reading', queryFold));
+  }
+
+  // Romaji queries (ADR 0011): match the stored Romaji form for every query so
+  // a Latin query finds readings without a kana IME. The query is cleaned
+  // (lowercased, apostrophes stripped, macrons expanded) and particle
+  // alternates are derived from it (non-initial wa→ha, wo→o, e→he). Each
+  // variant uses both exact and prefix strategies except the whole-query
+  // wa/wo/e alternates, which are exact-only so they cannot become a `ha%`
+  // style prefix scan. The e→he alternate is skipped when the literal query is
+  // itself an exact stored reading — ie/ue/koe/mae stay words rather than
+  // pulling いへん/うへっ/こへい/まへん in via prefix. wa→ha is never skipped:
+  // dewa must still find では even though 出羽 stores dewa.
+  const cleanedRomaji = cleanRomajiQuery(query);
+  const cleanedIsStoredReading =
+    cleanedRomaji !== '' &&
+    sqlite.prepare('SELECT 1 FROM entry_reading WHERE romaji = ? LIMIT 1').get(cleanedRomaji) !==
+      undefined;
+  for (const variant of romajiQueryVariants(query, {
+    exactStoredReading: cleanedIsStoredReading
+  })) {
+    strategies.push(exactStrategy(READING_ROMAJI, 'exact_reading', variant.value));
+    if (!variant.exactOnly) {
+      strategies.push(escapedPrefixStrategy(READING_ROMAJI, 'prefix_reading', variant.value));
+    }
   }
 
   for (const strategy of strategies) {

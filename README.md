@@ -23,11 +23,11 @@ For context this application was created to run on a VPS/Raspberry Pi/home serve
 
 ## Stack
 
-| Package | Tech | Purpose |
-|---------|------|---------|
-| `apps/api` | Fastify + better-sqlite3 + Drizzle ORM | REST API and SQLite database |
-| `apps/web` | React 19 + Vite + React Router + Recharts | Frontend SPA |
-| `packages/shared` | TypeScript + Zod | Shared schemas and enums |
+| Package             | Tech                                          | Purpose                                       |
+| ------------------- | --------------------------------------------- | --------------------------------------------- |
+| `apps/api`          | Fastify + better-sqlite3 + Drizzle ORM        | REST API and SQLite database                  |
+| `apps/web`          | React 19 + Vite + React Router + Recharts     | Frontend SPA                                  |
+| `packages/shared`   | TypeScript + Zod                              | Shared schemas and enums                      |
 | `packages/importer` | TypeScript + fast-xml-parser + sax + unzipper | CLI importer for JMdict / KANJIDIC2 / KanjiVG |
 
 ## Prerequisites
@@ -80,22 +80,22 @@ pnpm --filter @kanjiscribe/importer dev import:kanjivg resources/kanjivg-2025081
 
 Environment variables for the importer:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DB_PATH` | `data/kanjiscribe.db` | SQLite database path |
-| `KANJI_SVG_DIR` | `data/kanji-svg` | Output directory for KanjiVG SVG files |
+| Variable        | Default               | Description                            |
+| --------------- | --------------------- | -------------------------------------- |
+| `DB_PATH`       | `data/kanjiscribe.db` | SQLite database path                   |
+| `KANJI_SVG_DIR` | `data/kanji-svg`      | Output directory for KanjiVG SVG files |
 
 Imports are safe to re-run — they use `INSERT OR REPLACE` / upsert semantics, so existing study data and assignments are preserved.
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `KANJISCRIBE_API_PORT` | `3000` (dev) / `52654` (prod) | Port the API/web server listens on |
-| `KANJISCRIBE_API_HOST` | `127.0.0.1` (dev) / `0.0.0.0` (prod) | Address to bind to |
-| `KANJISCRIBE_DATA_DIR` | `data/` relative to repo root | Sets both DB path and SVG dir at once |
-| `KANJISCRIBE_DB_PATH` | `$DATA_DIR/kanjiscribe.db` | Override for database file path |
-| `KANJI_SVG_DIR` | `$DATA_DIR/kanji-svg` | Override for KanjiVG SVG directory |
+| Variable               | Default                              | Description                           |
+| ---------------------- | ------------------------------------ | ------------------------------------- |
+| `KANJISCRIBE_API_PORT` | `3000` (dev) / `52654` (prod)        | Port the API/web server listens on    |
+| `KANJISCRIBE_API_HOST` | `127.0.0.1` (dev) / `0.0.0.0` (prod) | Address to bind to                    |
+| `KANJISCRIBE_DATA_DIR` | `data/` relative to repo root        | Sets both DB path and SVG dir at once |
+| `KANJISCRIBE_DB_PATH`  | `$DATA_DIR/kanjiscribe.db`           | Override for database file path       |
+| `KANJI_SVG_DIR`        | `$DATA_DIR/kanji-svg`                | Override for KanjiVG SVG directory    |
 
 ## Project Scripts
 
@@ -123,7 +123,7 @@ pnpm --filter @kanjiscribe/importer dev     # Run importer CLI
 
 ## Implemented Features
 
-- **Dictionary search** — search JMdict by spelling or reading with exact/prefix matching
+- **Dictionary search** — search JMdict by spelling, reading, or strict Hepburn romaji (`taberu`, `toukyou`) with exact/prefix matching; English glosses are not searched
 - **Word detail view** — full entry with spellings, readings, senses, and reading restrictions
 - **Intake** — manually add words, re-use existing study items, and create daily assignments
 - **Today view** — see and manage assignments for the current day
