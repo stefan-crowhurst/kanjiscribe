@@ -7,6 +7,7 @@ import path from 'node:path';
 import { sqlite } from './client.js';
 import { findMigrationsDir, runMigrationsOnDb } from './run-migrations.js';
 import { run as runQueuePositionMigration } from './sql/0007_queue_position.js';
+import { run as runRomajiMigration } from './sql/0008_entry_reading_romaji.js';
 
 function viewExists(name: string): boolean {
   return (
@@ -67,11 +68,105 @@ describe('migrations', () => {
     runQueuePositionMigration(db);
     runQueuePositionMigration(db);
 
-    const columns = db.prepare('PRAGMA table_info(daily_assignment)').all() as Array<{ name: string }>;
+    const columns = db.prepare('PRAGMA table_info(daily_assignment)').all() as Array<{
+      name: string;
+    }>;
     expect(columns.map((column) => column.name)).toContain('queue_position');
-    expect(
-      db.prepare('SELECT queue_position FROM daily_assignment WHERE id = 1').get()
-    ).toEqual({ queue_position: null });
+    expect(db.prepare('SELECT queue_position FROM daily_assignment WHERE id = 1').get()).toEqual({
+      queue_position: null
+    });
+
+    db.close();
+  });
+
+  it('boots on a pre-feature database: initial schema skipped, romaji ensured by migration 0008', async () => {
+    const db = new Database(':memory:');
+    // A pre-feature database is the initial schema without the romaji column
+    // and its index (the committed 0001 at HEAD has neither).
+    const migrationsDir = findMigrationsDir(import.meta.dirname)!;
+    const preFeatureSchema = fs
+      .readFileSync(path.join(migrationsDir, '0001_initial.sql'), 'utf8')
+      .replace('  romaji TEXT,\n', '')
+      .replace(
+        'CREATE INDEX IF NOT EXISTS idx_entry_reading_romaji ON entry_reading(romaji);\n',
+        ''
+      );
+    db.exec(preFeatureSchema);
+
+    // If 0001's formatting changes, these replaces silently no-op and the
+    // test stops exercising the pre-feature path.
+    const preFeatureColumns = db
+      .prepare('PRAGMA table_info(entry_reading)')
+      .all() as Array<{ name: string }>;
+    expect(preFeatureColumns.map((column) => column.name)).not.toContain('romaji');
+    const preFeatureIndex = db
+      .prepare(
+        `SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_entry_reading_romaji'`
+      )
+      .get();
+    expect(preFeatureIndex).toBeUndefined();
+    db.exec(`
+      INSERT INTO dictionary_entry (id, is_common, created_at, updated_at)
+      VALUES (1, 0, '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z');
+      INSERT INTO entry_reading (entry_id, text, is_primary, no_kanji)
+      VALUES (1, 'たべる', 1, 0);
+    `);
+
+    await runMigrationsOnDb(db);
+
+    const columns = db.prepare('PRAGMA table_info(entry_reading)').all() as Array<{ name: string }>;
+    expect(columns.map((column) => column.name)).toContain('romaji');
+
+    const index = db
+      .prepare(
+        `SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_entry_reading_romaji'`
+      )
+      .get();
+    expect(index).toBeDefined();
+
+    expect(db.prepare('SELECT romaji FROM entry_reading WHERE text = ?').get('たべる')).toEqual({
+      romaji: 'taberu'
+    });
+
+    db.close();
+  });
+
+  it('adds romaji and its index idempotently, backfilling non-degenerate readings only', () => {
+    const db = new Database(':memory:');
+    db.exec(`
+      CREATE TABLE entry_reading (
+        entry_id INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        is_primary INTEGER NOT NULL,
+        no_kanji INTEGER NOT NULL,
+        PRIMARY KEY (entry_id, text)
+      );
+      INSERT INTO entry_reading (entry_id, text, is_primary, no_kanji)
+      VALUES
+        (1, 'たべる', 1, 0),
+        (2, 'すゞ', 1, 0),
+        (3, 'ー', 1, 0);
+    `);
+
+    runRomajiMigration(db);
+    runRomajiMigration(db);
+
+    const columns = db.prepare('PRAGMA table_info(entry_reading)').all() as Array<{ name: string }>;
+    expect(columns.map((column) => column.name)).toContain('romaji');
+
+    const index = db
+      .prepare(
+        `SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_entry_reading_romaji'`
+      )
+      .get();
+    expect(index).toBeDefined();
+
+    const rows = db.prepare('SELECT text, romaji FROM entry_reading ORDER BY entry_id').all();
+    expect(rows).toEqual([
+      { text: 'たべる', romaji: 'taberu' },
+      { text: 'すゞ', romaji: 'suzu' },
+      { text: 'ー', romaji: null }
+    ]);
 
     db.close();
   });

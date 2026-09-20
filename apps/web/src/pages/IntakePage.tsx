@@ -2,7 +2,12 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { type DashboardResponse, type DictionarySearchResult } from '@kanjiscribe/shared';
 
 import { LoadingState } from '../components/LoadingState.js';
-import { getDashboardStats, intakeStudyItem, searchDictionary, todayDateString } from '../lib/api.js';
+import {
+  getDashboardStats,
+  intakeStudyItem,
+  searchDictionary,
+  todayDateString
+} from '../lib/api.js';
 
 export function IntakePage() {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -161,7 +166,7 @@ export function IntakePage() {
             ref={searchInputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Type a word, e.g. 食べる"
+            placeholder="Type a word or romaji, e.g. 食べる or taberu"
           />
           <button
             className="button"

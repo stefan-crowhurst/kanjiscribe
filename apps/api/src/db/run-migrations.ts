@@ -25,6 +25,9 @@ export function findMigrationsDir(baseDir: string): string | null {
   return migrationsDirCandidates(baseDir).find((dir) => fs.existsSync(dir)) ?? null;
 }
 
+/** The initial schema is fresh-database-only; upgrades land in numbered migrations. */
+const INITIAL_SCHEMA_FILE = '0001_initial.sql';
+
 export async function runMigrationsOnDb(db: Database, log = false): Promise<void> {
   const migrationsDir = findMigrationsDir(__dirname);
   if (!migrationsDir) {
@@ -46,6 +49,12 @@ export async function runMigrationsOnDb(db: Database, log = false): Promise<void
     const filePath = path.join(migrationsDir, file);
 
     if (file.endsWith('.sql')) {
+      // Skip 0001 on non-fresh databases: its idx_entry_reading_romaji index
+      // targets a column only 0008 adds. Its other statements are all
+      // CREATE ... IF NOT EXISTS, already no-ops on an existing database.
+      if (file === INITIAL_SCHEMA_FILE && !isFreshDatabase(db)) {
+        continue;
+      }
       const sql = fs.readFileSync(filePath, 'utf-8');
       db.exec(sql);
     } else {
@@ -61,4 +70,14 @@ export async function runMigrationsOnDb(db: Database, log = false): Promise<void
       console.log(`Applied migration ${file}`);
     }
   }
+}
+
+/** A fresh database has no tables yet; anything else is an existing install. */
+function isFreshDatabase(db: Database): boolean {
+  const row = db
+    .prepare(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1`
+    )
+    .get();
+  return row === undefined;
 }

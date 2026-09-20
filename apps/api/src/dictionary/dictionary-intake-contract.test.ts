@@ -9,7 +9,13 @@ import {
 
 import { app } from '../server.js';
 import { sqlite } from '../db/client.js';
-import { resetCounters, resetDb, seedAssignment, seedStudyItem } from '../test-helpers.js';
+import {
+  resetCounters,
+  resetDb,
+  seedAssignment,
+  seedEntry,
+  seedStudyItem
+} from '../test-helpers.js';
 
 /**
  * Contract test (ADR-0006): the bytes the dictionary and intake routes
@@ -20,86 +26,11 @@ import { resetCounters, resetDb, seedAssignment, seedStudyItem } from '../test-h
 function parseWith<T extends z.ZodTypeAny>(schema: T, body: string): z.infer<T> {
   const parsed = schema.safeParse(JSON.parse(body));
   if (!parsed.success) {
-    throw new Error(`Response rejected by shared schema: ${JSON.stringify(parsed.error.issues, null, 2)}`);
+    throw new Error(
+      `Response rejected by shared schema: ${JSON.stringify(parsed.error.issues, null, 2)}`
+    );
   }
   return parsed.data;
-}
-
-type SeedSpelling = { text: string; is_primary?: number; priority_rank?: number | null };
-type SeedReading = { text: string; is_primary?: number; no_kanji?: number };
-type SeedSense = {
-  sense_index: number;
-  glosses_json?: string;
-  parts_of_speech_json?: string;
-  misc_tags_json?: string;
-  field_tags_json?: string;
-  dialect_tags_json?: string;
-  info_json?: string;
-};
-
-function seedEntry(opts: {
-  id: number;
-  is_common?: number;
-  priority_rank?: number | null;
-  spellings?: SeedSpelling[];
-  readings?: SeedReading[];
-  senses?: SeedSense[];
-  reading_restrictions?: Array<{ reading_text: string; spelling_text: string }>;
-}): void {
-  const ts = '2024-01-01T00:00:00.000Z';
-  sqlite
-    .prepare(
-      `INSERT INTO dictionary_entry (id, is_common, priority_rank, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?)`
-    )
-    .run(opts.id, opts.is_common ?? 1, opts.priority_rank ?? null, ts, ts);
-
-  for (const spelling of opts.spellings ?? []) {
-    sqlite
-      .prepare(
-        `INSERT INTO entry_spelling (entry_id, text, is_primary, priority_rank)
-         VALUES (?, ?, ?, ?)`
-      )
-      .run(opts.id, spelling.text, spelling.is_primary ?? 0, spelling.priority_rank ?? null);
-  }
-
-  for (const reading of opts.readings ?? []) {
-    sqlite
-      .prepare(
-        `INSERT INTO entry_reading (entry_id, text, is_primary, no_kanji)
-         VALUES (?, ?, ?, ?)`
-      )
-      .run(opts.id, reading.text, reading.is_primary ?? 0, reading.no_kanji ?? 0);
-  }
-
-  for (const sense of opts.senses ?? []) {
-    sqlite
-      .prepare(
-        `INSERT INTO entry_sense (
-           entry_id, sense_index, glosses_json, parts_of_speech_json,
-           misc_tags_json, field_tags_json, dialect_tags_json, info_json
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
-        opts.id,
-        sense.sense_index,
-        sense.glosses_json ?? '[]',
-        sense.parts_of_speech_json ?? '[]',
-        sense.misc_tags_json ?? '[]',
-        sense.field_tags_json ?? '[]',
-        sense.dialect_tags_json ?? '[]',
-        sense.info_json ?? '[]'
-      );
-  }
-
-  for (const restriction of opts.reading_restrictions ?? []) {
-    sqlite
-      .prepare(
-        `INSERT INTO entry_reading_spelling (entry_id, reading_text, spelling_text)
-         VALUES (?, ?, ?)`
-      )
-      .run(opts.id, restriction.reading_text, restriction.spelling_text);
-  }
 }
 
 function todayIso(): string {
@@ -153,6 +84,13 @@ describe('dictionary + intake response contract — api bytes parse through the 
       spellings: [{ text: '日本語', is_primary: 1 }],
       readings: [{ text: 'にほんご', is_primary: 1 }]
     });
+    seedEntry({
+      id: 3,
+      is_common: 1,
+      spellings: [{ text: '食べる', is_primary: 1 }],
+      readings: [{ text: 'たべる', is_primary: 1, romaji: 'taberu' }],
+      senses: [{ sense_index: 0, glosses_json: JSON.stringify(['to eat']) }]
+    });
   }
 
   function intakePayload(overrides?: { assigned_for_date?: string }) {
@@ -201,6 +139,23 @@ describe('dictionary + intake response contract — api bytes parse through the 
       { text: 'かたち', is_primary: false },
       { text: '型', is_primary: false }
     ]);
+  });
+
+  it('romaji search response parses through dictionarySearchResponseSchema with match_type and today_assigned', async () => {
+    seedDictionaryData();
+    const item = seedStudyItem(sqlite, 3, { surface_form: '食べる', selected_reading: 'たべる' });
+    seedAssignment({ study_item_id: item, assigned_for_date: todayIso(), status: 'pending' });
+
+    const res = await app.inject({ method: 'GET', url: '/dictionary/search?q=taberu' });
+    expect(res.statusCode).toBe(200);
+
+    const search = parseWith(dictionarySearchResponseSchema, res.body);
+    const hit = search.results.find((r) => r.entry_id === 3);
+    expect(hit).toBeDefined();
+    expect(hit!.match_type).toBe('exact_reading');
+    expect(hit!.today_assigned).toBe(true);
+    expect(hit!.primary_spelling).toBe('食べる');
+    expect(hit!.primary_reading).toBe('たべる');
   });
 
   it('entry detail response parses through dictionaryEntryDetailResponseSchema including senses and restrictions', async () => {
