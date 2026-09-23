@@ -194,10 +194,35 @@ find /media/default/ssd/prod -maxdepth 1 -type d -name 'kanjiscribe-failed-*' \
     | sort -r | tail -n +2 | xargs -r rm -rf
 ```
 
+## Upgrade notes
+
+Schema migrations run automatically at service boot. Some releases additionally need a one-time **data** action that boot migrations cannot perform; those are listed here.
+
+### Script-folded readings (ADR 0010) — one-time JMdict re-import
+
+The script-folded readings release changes how dictionary readings are stored: readings that differ only by kana script (`ひま` / `ヒマ`) collapse to a single canonical reading at import — hiragana when the entry has one (ADR 0010). The collapse is **import-time only**: releasing the new code does not rewrite rows that already exist. An instance updated from a pre-ADR-0010 database keeps its script-duplicate readings — and the intake reading picker keeps offering both — until a JMdict re-import is run against the **live instance's** data directory.
+
+```bash
+cd /media/default/ssd/dev/kanjiscribe
+sudo systemctl stop kanjiscribe
+KANJISCRIBE_DATA_DIR=/media/default/ssd/prod/kanjiscribe/data \
+  pnpm --filter @kanjiscribe/importer dev import:jmdict /media/default/ssd/dev/kanjiscribe/resources/JMdict_e.gz
+sudo systemctl start kanjiscribe
+```
+
+- Takes about two minutes. Stop the service first so no request observes a half-collapsed entry set.
+- The dataset files live in the dev repository's `resources/` directory — a release instance does not ship them. Pass an absolute source path; the importer resolves a relative path against the current working directory.
+- Touches dictionary tables only (`dictionary_entry`, `entry_spelling`, `entry_reading`, `entry_reading_spelling`, `entry_sense`). Study items, assignments, estimate snapshots, and attribution are untouched — study data is never at risk.
+- Safe and idempotent: re-running is a no-op on already-collapsed data.
+- To verify, `暇` (entry 1577280) lists one reading, `ひま`, and the database holds roughly 9,130 fewer entries with script-duplicate readings (~9,978 fewer `entry_reading` rows overall).
+- Do **not** "restore" the dropped script variants. The divergence from JMdict is intentional (ADR 0010).
+
+Skipped only if the instance has never imported JMdict at all (fresh install) — in that case run the import as part of first-time setup ([deployment.md](deployment.md)) and the collapse applies automatically.
+
 ## Notes
 
 - **Migrations**: The API server runs migrations automatically on every boot, against the live instance's data — you do not need to run `pnpm --filter @kanjiscribe/api db:migrate` manually. The initial schema (`0001_initial.sql`) is for fresh databases only; an existing instance takes its schema changes from the numbered migrations, which are written to be re-runnable.
-- **Romaji reading cache**: Existing databases get the derived `entry_reading.romaji` cache automatically at service boot: migration `0008_entry_reading_romaji.ts` adds the column if it is missing, creates its index, and backfills every reading whose `romaji` is still `NULL`. No manual JMdict re-import is required after an update, and re-running the import remains safe and idempotent.
+- **Romaji reading cache**: Existing databases get the derived `entry_reading.romaji` cache automatically at service boot: migration `0008_entry_reading_romaji.ts` adds the column if it is missing, creates its index, and backfills every reading whose `romaji` is still `NULL`. No manual JMdict re-import is required _for this cache_, and re-running the import remains safe and idempotent. (Releases that change the **stored shape** of readings do need a one-time re-import — see Upgrade notes above.)
 - **Import data updates**: If upstream datasets (JMdict, KANJIDIC2, KanjiVG) have been updated and you want to refresh, re-run the importer commands. This is safe because imports use `INSERT OR REPLACE` / upsert semantics — existing study data and assignments are preserved.
 - **WAL checkpointing**: On shutdown the server runs `PRAGMA wal_checkpoint(TRUNCATE)` to flush the write-ahead log and remove the `-wal` and `-shm` files from the data directory. This keeps the database clean — and is why the release pipeline copies the live data only after the service has stopped.
 - **Data directory**: An update copies the live instance's data into the staging instance; the dev repository's `data/` is never a source for updates, and migrations run against the live data at service boot. The dev repository's data participates only in the documented first-time dataset import, never in a release.
