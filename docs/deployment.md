@@ -1,6 +1,8 @@
 # Deployment Guide
 
-This document covers installing Kanjiscribe as a production systemd service on a Raspberry Pi.
+This document covers installing Kanjiscribe as a production systemd service on a Raspberry Pi — **first-time install only**: prerequisites, building on the Pi, a fresh install, first-time data setup, and service registration.
+
+For **updating an existing instance** — releases, rollback, retention, and one-time upgrade actions such as the script-folded readings re-import — see [updating.md](updating.md) instead. Rough rule of thumb: come here when no instance exists yet and you are building one from nothing; go there when an instance already exists and you are promoting a new build onto it (or undoing one).
 
 ## Architecture
 
@@ -65,28 +67,57 @@ With the target not yet existing, the release script performs a **fresh install*
 - `apps/web/dist/` — the built frontend
 - `systemd/kanjiscribe.service` — the systemd service file
 - `docs/` — operator guides (this deployment guide and the updating guide)
-- `data/` — an empty skeleton; **dataset import stays manual** (Step 6)
+- `data/` — an empty skeleton; **dataset setup stays manual** (Step 3)
 
 The target's parent directory must already exist — the release script never creates parent directories. On a fresh install no release backup is created (there was no previous instance); later releases onto the existing target back up and swap as normal. See [updating.md](updating.md) for the full release pipeline, retention rules, and rollback.
 
-## Step 3: Copy Your Data (First-time Setup Only)
+## Step 3: Set Up Your Data (First-time Setup Only)
 
-This step is **first-time setup only** — it brings existing data into the fresh instance once. The dev repository's `data/` is never a source for updates: every update copies the live instance's own data into the new instance instead (see [updating.md](updating.md)).
+This step is **first-time setup only** and happens **before the service starts**, so no request ever observes a half-copied or half-imported database. The dev repository's `data/` is never a source for updates: every update copies the live instance's own data into the new instance instead (see [updating.md](updating.md)).
 
-If you have an existing database and KanjiVG SVG files from development:
+Step 2's fresh install has already created the `data/` directory. Pick one option below; skip both only if you want to start from an empty dictionary.
+
+### Option A — Copy an existing database from development
+
+If you have been using the app in development and want the same study data in production.
+
+**Clean shutdown (recommended).** Stop the dev server with Ctrl+C. This triggers `PRAGMA wal_checkpoint(TRUNCATE)`, which flushes all pending writes and removes the `-wal`/`-shm` files, so you only need the single `.db` file:
 
 ```bash
-mkdir -p /media/default/ssd/prod/kanjiscribe/data
 cp /media/default/ssd/dev/kanjiscribe/data/kanjiscribe.db /media/default/ssd/prod/kanjiscribe/data/
-cp /media/default/ssd/dev/kanjiscribe/data/kanjiscribe.db-wal /media/default/ssd/prod/kanjiscribe/data/
-cp /media/default/ssd/dev/kanjiscribe/data/kanjiscribe.db-shm /media/default/ssd/prod/kanjiscribe/data/
 cp -r /media/default/ssd/dev/kanjiscribe/data/kanji-svg /media/default/ssd/prod/kanjiscribe/data/
 sudo chown -R default:default /media/default/ssd/prod/kanjiscribe/data
 ```
 
-**Tip**: Stop the dev server first (Ctrl+C) to trigger the graceful shutdown WAL checkpoint. This flushes all pending writes to the main `.db` file, so you only need to copy that single file.
+**Unclean shutdown.** If the dev server stopped unexpectedly (power loss, `kill -9`), copy all three database files to avoid losing recent writes:
 
-If setting up fresh, skip this step and import the datasets (Step 6) — the release script's fresh install has already created the `data/` directory.
+```bash
+cp /media/default/ssd/dev/kanjiscribe/data/kanjiscribe.db* /media/default/ssd/prod/kanjiscribe/data/
+cp -r /media/default/ssd/dev/kanjiscribe/data/kanji-svg /media/default/ssd/prod/kanjiscribe/data/
+sudo chown -R default:default /media/default/ssd/prod/kanjiscribe/data
+```
+
+The production server creates fresh `-wal`/`-shm` files on first open.
+
+**If the copied database predates script-folded readings (ADR 0010):** its dictionary tables still hold hiragana/katakana script-duplicate readings (`ひま` / `ヒマ`), and the intake reading picker will keep offering both. Run the one-time JMdict re-import from the [upgrade notes](updating.md#upgrade-notes) against the new instance's `data/` before finishing setup.
+
+### Option B — Import the reference datasets
+
+If setting up fresh (or you want a clean dictionary), import the datasets instead of copying:
+
+```bash
+cd /media/default/ssd/dev/kanjiscribe
+KANJISCRIBE_DATA_DIR=/media/default/ssd/prod/kanjiscribe/data \
+  pnpm --filter @kanjiscribe/importer dev import:kanjidic2 /path/to/kanjidic2.xml.gz
+
+KANJISCRIBE_DATA_DIR=/media/default/ssd/prod/kanjiscribe/data \
+  pnpm --filter @kanjiscribe/importer dev import:jmdict /path/to/JMdict_e.gz
+
+KANJISCRIBE_DATA_DIR=/media/default/ssd/prod/kanjiscribe/data \
+  pnpm --filter @kanjiscribe/importer dev import:kanjivg /path/to/kanjivg-release.zip 2026-03
+```
+
+Run these from the dev repository so `pnpm` finds the workspace, and pass absolute dataset paths if the files are not in the current working directory (the importer resolves a relative path against your cwd). A fresh import always produces script-folded readings — the ADR 0010 collapse applies automatically, so Option B needs no extra step.
 
 ## Step 4: Review the systemd Service
 
@@ -112,23 +143,7 @@ sudo systemctl enable kanjiscribe
 sudo systemctl start kanjiscribe
 ```
 
-## Step 6: Import Reference Data (First-time Setup)
-
-If this is a fresh install without existing data, import the dictionary datasets:
-
-```bash
-cd /media/default/ssd/dev/kanjiscribe
-KANJISCRIBE_DATA_DIR=/media/default/ssd/prod/kanjiscribe/data \
-  pnpm --filter @kanjiscribe/importer dev import:kanjidic2 /path/to/kanjidic2.xml.gz
-
-KANJISCRIBE_DATA_DIR=/media/default/ssd/prod/kanjiscribe/data \
-  pnpm --filter @kanjiscribe/importer dev import:jmdict /path/to/JMdict_e.gz
-
-KANJISCRIBE_DATA_DIR=/media/default/ssd/prod/kanjiscribe/data \
-  pnpm --filter @kanjiscribe/importer dev import:kanjivg /path/to/kanjivg-release.zip 2026-03
-```
-
-## Step 7: Verify
+## Step 6: Verify
 
 ```bash
 # Check service status
@@ -218,29 +233,3 @@ A single-slot backup directory (e.g. `kanjiscribe-manual-backup`) may sit next t
 - For additional security, you could set `KANJISCRIBE_API_HOST` to the Pi's Tailscale IP instead of `0.0.0.0`.
 - The systemd service uses `NoNewPrivileges=true` and restricts address families to only TCP/IP and UNIX sockets.
 - No authentication is built in; this is a single-user app designed for a private Tailscale network.
-
-## Migrating from Development (First-time Setup Only)
-
-If you've been using the app in development and want to keep the same database in production, this one-time import brings the dev data into the fresh instance. This is the **only** time the dev repository's `data/` is a data source — updates never touch it (they copy the live instance's data; see [updating.md](updating.md)).
-
-**Option A — Clean shutdown (recommended):**
-Stop the dev server with Ctrl+C. This triggers `PRAGMA wal_checkpoint(TRUNCATE)`, which flushes all pending writes and removes the `-wal`/`-shm` files. Then copy just the `.db` file:
-
-```bash
-cp /media/default/ssd/dev/kanjiscribe/data/kanjiscribe.db /media/default/ssd/prod/kanjiscribe/data/
-```
-
-**Option B — Unclean shutdown:**
-If the dev server stopped unexpectedly (power loss, kill -9), copy all three database files to avoid losing recent writes:
-
-```bash
-cp /media/default/ssd/dev/kanjiscribe/data/kanjiscribe.db* /media/default/ssd/prod/kanjiscribe/data/
-```
-
-Also copy the KanjiVG SVG files:
-
-```bash
-cp -r /media/default/ssd/dev/kanjiscribe/data/kanji-svg /media/default/ssd/prod/kanjiscribe/data/
-```
-
-When the production server starts, it will open the existing `.db` and create fresh `-wal`/`-shm` files automatically.
