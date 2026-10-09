@@ -13,7 +13,7 @@ A release stages a complete instance from the dev build and swaps it into place 
 ## Prerequisites
 
 - Raspberry Pi running a Debian-based OS (Raspberry Pi OS, Ubuntu, etc.)
-- Node.js 22+ and pnpm (install globally with `corepack enable`)
+- Node.js 24.x (24.21.x — pinned in [`.nvmrc`](../.nvmrc)) and pnpm (install globally with `corepack enable`)
 - Build tools for native addons: `sudo apt install build-essential python3`
 - Access to the Pi via Tailscale (or SSH on local network)
 - JMdict, KANJIDIC2, and KanjiVG dataset files (see [README.md](../README.md) for download links)
@@ -63,7 +63,7 @@ With the target not yet existing, the release script performs a **fresh install*
 
 - `apps/api/dist/server.js` — the bundled API server (~1.8MB, all JS deps inlined)
 - `apps/api/dist/db/sql/` — database migrations
-- `apps/api/package.json` + `apps/api/node_modules/` — installed by `npm install` inside staging; contains `better-sqlite3` and its ~15 transitive dependencies (the only node_modules needed at runtime)
+- `apps/api/package.json` + `apps/api/node_modules/` — installed by `npm install` inside staging; contains `better-sqlite3` and its `node-addon-api` dependency (the only node_modules needed at runtime)
 - `apps/web/dist/` — the built frontend
 - `systemd/kanjiscribe.service` — the systemd service file
 - `docs/` — operator guides (this deployment guide and the updating guide)
@@ -126,13 +126,14 @@ cat /media/default/ssd/prod/kanjiscribe/systemd/kanjiscribe.service
 ```
 
 Key settings:
-| Setting | Value |
-|---------|-------|
-| `User` / `Group` | `default` (default) |
-| `WorkingDirectory` | `/media/default/ssd/prod/kanjiscribe` |
+
+| Setting                | Value                                      |
+| ---------------------- | ------------------------------------------ |
+| `User` / `Group`       | `default` (default)                        |
+| `WorkingDirectory`     | `/media/default/ssd/prod/kanjiscribe`      |
 | `KANJISCRIBE_DATA_DIR` | `/media/default/ssd/prod/kanjiscribe/data` |
-| `KANJISCRIBE_API_PORT` | `52654` |
-| `KANJISCRIBE_API_HOST` | `0.0.0.0` |
+| `KANJISCRIBE_API_PORT` | `52654`                                    |
+| `KANJISCRIBE_API_HOST` | `0.0.0.0`                                  |
 
 ## Step 5: Install and Start the Service
 
@@ -172,8 +173,7 @@ The production directory contains only what's needed at runtime:
 │   │   │   └── db/sql/         # Migration files
 │   │   └── node_modules/       # Installed by npm in target
 │   │       ├── better-sqlite3/ # Native addon
-│   │       ├── bindings/       # Transitive dependency
-│   │       └── ...             # (~15 packages total)
+│   │       └── node-addon-api/ # Transitive dependency
 │   └── web/
 │       └── dist/               # Built frontend
 ├── systemd/

@@ -27,7 +27,11 @@ if (isEntry) {
 const app = Fastify({ logger: isEntry });
 
 await app.register(cors, {
-  origin: true
+  origin: true,
+  // Explicit @fastify/cors v10 default: v11 narrowed the implicit methods to
+  // the CORS-safelisted set (GET,HEAD,POST), which would drop PUT (queue
+  // reordering) from the web app's preflights.
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE'
 });
 
 if (fs.existsSync(appConfig.kanjiSvgDir)) {

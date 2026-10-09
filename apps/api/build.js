@@ -3,12 +3,14 @@ import { build } from 'esbuild';
 import fs from 'node:fs';
 import path from 'node:path';
 
+const nodeTarget = 'node24';
+
 await build({
   entryPoints: ['src/server.ts'],
   bundle: true,
   platform: 'node',
   format: 'esm',
-  target: 'node22',
+  target: nodeTarget,
   outfile: 'dist/server.js',
   external: ['better-sqlite3'],
   banner: {
@@ -36,7 +38,7 @@ for (const file of tsMigrations) {
     bundle: true,
     platform: 'node',
     format: 'esm',
-    target: 'node22',
+    target: nodeTarget,
     outfile: path.join(sqlOutDir, outFile),
     external: ['better-sqlite3']
   });
