@@ -71,7 +71,11 @@ export function BacklogPage() {
           {groupedAssignments.map((group) => {
             const isExpanded = expandedDays.has(group.date);
             const stats = data.dayStats[group.date];
-            const completed = stats?.completed_count ?? 0;
+            // The header describes the cards beneath it. The Backlog endpoint
+            // returns only pending and skipped assignments, so every group
+            // member is unfinished: `remaining` is the group length, and
+            // `total` is the day's non-archived total, falling back to the
+            // group length when no day summary exists.
             const total = stats?.total_assignments ?? group.assignments.length;
             const remaining = group.assignments.length;
             const estimateState = dayEstimates[group.date];
@@ -85,7 +89,6 @@ export function BacklogPage() {
                 key={group.date}
                 date={group.date}
                 initialAssignments={group.assignments}
-                completed={completed}
                 total={total}
                 remaining={remaining}
                 estimateLabel={estimateLabel}
@@ -106,7 +109,6 @@ export function BacklogPage() {
 function BacklogDayGroup({
   date,
   initialAssignments,
-  completed,
   total,
   remaining,
   estimateLabel,
@@ -118,7 +120,6 @@ function BacklogDayGroup({
 }: {
   date: string;
   initialAssignments: Assignment[];
-  completed: number;
   total: number;
   remaining: number;
   estimateLabel: string;
@@ -156,7 +157,7 @@ function BacklogDayGroup({
           </span>
           <h3>{formatJapaneseDate(date)}</h3>
           <span className="backlog-day-stats">
-            {completed}/{total} drilled, {remaining} remaining
+            {remaining} of {total} remaining
             {estimateLabel}
           </span>
         </button>
@@ -167,7 +168,7 @@ function BacklogDayGroup({
       {isExpanded ? (
         <AssignmentList
           assignments={assignments}
-          getDrillQuery={() => query}
+          drillQuery={query}
           onRemove={onRemove}
           removingId={removingId}
           onReorder={handleReorder}

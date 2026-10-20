@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { isUnfinishedStatus, type Assignment, type HeatmapDay } from '@kanjiscribe/shared';
 
 import { AssignmentList } from '../components/AssignmentList.js';
-import { DeltaChip } from '../components/DeltaChip.js';
+import { DayVerdict } from '../components/DayVerdict.js';
 import { LoadingState } from '../components/LoadingState.js';
 import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
 import { useAssignmentReorder } from '../hooks/useAssignmentReorder.js';
@@ -83,7 +83,7 @@ export function TodayPage() {
           <p className="muted today-date">{formatJapaneseDate(todayDateString())}</p>
           {countsKnown ? (
             <p className="muted">
-              {completed}/{total} drilled, {remaining} remaining
+              {completed}/{total} completed, {remaining} remaining
             </p>
           ) : (
             <LoadingState message="Loading today's stats..." />
@@ -99,11 +99,7 @@ export function TodayPage() {
           </Link>
         ) : null}
       </div>
-      {typeof dayDeltaMs === 'number' ? (
-        <p className="today-day-verdict">
-          Day verdict: <DeltaChip deltaMs={dayDeltaMs} />
-        </p>
-      ) : null}
+      <DayVerdict deltaMs={dayDeltaMs} />
       {error ? <p className="error">{error}</p> : null}
       {assignments === null ? (
         <LoadingState message="Loading today's assignments..." />
@@ -111,7 +107,6 @@ export function TodayPage() {
         <AssignmentList
           assignments={assignments}
           queueSource="today"
-          variant="today"
           onRemove={handleRemove}
           removingId={removingId}
           onReorder={handleReorder}
