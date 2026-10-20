@@ -97,6 +97,19 @@ function SortableAssignmentItem({
   return render(assignment, sortable);
 }
 
+export function AssignmentDragGrip() {
+  return (
+    <span className="assignment-drag-grip" aria-hidden="true">
+      <span />
+      <span />
+      <span />
+      <span />
+      <span />
+      <span />
+    </span>
+  );
+}
+
 export function AssignmentDragHandle({
   sortable,
   label,
@@ -120,14 +133,7 @@ export function AssignmentDragHandle({
       {...listeners}
       onClick={(event) => event.stopPropagation()}
     >
-      <span className="assignment-drag-grip" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-        <span />
-        <span />
-        <span />
-      </span>
+      <AssignmentDragGrip />
     </button>
   );
 }

@@ -6,7 +6,7 @@ import {
   type TopWordsResponse
 } from '@kanjiscribe/shared';
 
-import { DeltaChip } from '../components/DeltaChip.js';
+import { DayVerdict } from '../components/DayVerdict.js';
 import { Heatmap } from '../components/Heatmap.js';
 import { ProgressCharts } from '../components/ProgressCharts.js';
 import { KanjiIcon } from '../components/KanjiIcon.js';
@@ -112,11 +112,7 @@ export function DashboardPage() {
             <h2>Today Time</h2>
             <p>{formatMs(data.today.total_time_ms)}</p>
             <small>Average: {formatMs(data.today.avg_time_per_assignment_ms)}</small>
-            {todayDeltaMs !== null && (
-              <small>
-                Day verdict: <DeltaChip deltaMs={todayDeltaMs} />
-              </small>
-            )}
+            <DayVerdict className="day-verdict--compact" deltaMs={todayDeltaMs} />
           </article>
         </div>
       ) : (

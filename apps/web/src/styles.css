@@ -380,6 +380,16 @@ nav a.active {
   cursor: wait;
 }
 
+/* Completed assignments keep the rail but their handle is inert: muted and
+   non-interactive, so the card content still lines up with movable neighbours. */
+.assignment-drag-handle--locked:disabled,
+.assignment-drag-handle--locked:disabled:hover,
+.assignment-drag-handle--locked:disabled:active {
+  color: var(--muted);
+  opacity: 0.35;
+  cursor: default;
+}
+
 .assignment-drag-grip {
   display: grid;
   grid-template-columns: repeat(2, 0.28rem);
@@ -429,41 +439,26 @@ nav a.active {
   line-height: 1.25;
 }
 
-.assignment-card-link {
-  color: inherit;
-  text-decoration: none;
-  flex: 1;
-  min-width: 0;
-}
-
-.assignment-card-link--card {
-  display: block;
-  flex: none;
-  min-width: 0;
-}
-
-.assignment-card-link--card > .assignment-card {
-  height: 100%;
-  margin: 0;
-}
-
-.assignment-card-link:hover strong {
-  color: var(--accent);
-}
-
+/* Completed reads "done" the same way on every list surface: the green
+   border and tint previously applied only on Today. The meta text is
+   darkened for contrast against the green tint. The drill hero keeps its
+   own muted completed treatment. */
 .assignment-card--completed {
-  background: linear-gradient(135deg, #f8f4ed 0%, #f0e8dc 100%);
-  border-color: #d4c8b8;
-}
-
-.assignment-card--completed small {
-  color: #8d7b6b;
-}
-
-.assignment-card--today-completed {
   border-color: var(--ok);
   border-width: 1px;
   background: linear-gradient(135deg, #f4f8f4 0%, #e8f0e8 100%);
+}
+
+.assignment-card--completed small {
+  color: #4d6455;
+}
+
+/* Keyboard focus for the card-as-link. The accent outline reads clearly
+   against both the paper card and the green completed tint. The nested
+   drag handle and Remove button keep their own focus indicators. */
+.assignment-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .backlog-day-list {
@@ -1599,7 +1594,20 @@ small {
   color: var(--muted);
 }
 
-.today-day-verdict {
+/* Shared day verdict block (see CONTEXT.md: day estimate delta) — rendered by
+   `DayVerdict` on Today, Day detail, and the dashboard's Today Time card. One
+   size everywhere, so the same verdict reads the same on every surface. */
+.day-verdict {
   margin: 0.25rem 0 0.75rem;
+  font-size: 0.9rem;
   color: var(--ink);
+}
+
+/* The Dashboard's Today Time card keeps its original compact, muted verdict
+   line, matching the `<small>` treatment it used before the shared block. */
+.stat-card .day-verdict--compact {
+  margin: 0;
+  font-size: smaller;
+  line-height: 1.2;
+  color: var(--muted);
 }

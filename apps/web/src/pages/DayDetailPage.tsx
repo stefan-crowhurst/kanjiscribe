@@ -9,7 +9,7 @@ import {
 } from '@kanjiscribe/shared';
 
 import { AssignmentCard, AssignmentCardPreview } from '../components/AssignmentCard.js';
-import { DeltaChip } from '../components/DeltaChip.js';
+import { DayVerdict } from '../components/DayVerdict.js';
 import {
   ReorderableAssignmentList,
   type SortableAssignment
@@ -17,6 +17,7 @@ import {
 import { useArchiveRemoval } from '../hooks/useArchiveRemoval.js';
 import { useAssignmentReorder } from '../hooks/useAssignmentReorder.js';
 import { formatMs, getDashboardStats, listAssignments } from '../lib/api.js';
+import { assignmentCardUrl } from '../lib/assignmentUrls.js';
 
 export function DayDetailPage() {
   const { date } = useParams();
@@ -109,23 +110,15 @@ export function DayDetailPage() {
             {daySummary.completed_count}/{daySummary.total_assignments} completed,{' '}
             {remainingAssignments.length} remaining
             {daySummary.total_time_ms > 0 && (
-              <span>
-                {' '}
-                • Total time: {formatMs(daySummary.total_time_ms)}
-                {daySummary.estimate_delta_ms !== null && (
-                  <>
-                    {' '}
-                    <DeltaChip deltaMs={daySummary.estimate_delta_ms} />
-                  </>
-                )}
-              </span>
+              <span> • Total time: {formatMs(daySummary.total_time_ms)}</span>
             )}
           </p>
+          <DayVerdict deltaMs={daySummary.estimate_delta_ms} />
         </div>
       </div>
 
       {assignments.length === 0 ? (
-        <p className="muted">No assignments for this date.</p>
+        <p className="muted">No assignments found.</p>
       ) : (
         <div className="day-assignments-list">
           {completedAssignments.length > 0 && (
@@ -136,7 +129,6 @@ export function DayDetailPage() {
                   <DayAssignmentCard
                     key={assignment.id}
                     assignment={assignment}
-                    dayDate={date!}
                     allIds={completedIds}
                   />
                 ))}
@@ -163,7 +155,6 @@ export function DayDetailPage() {
                   <DayAssignmentCard
                     key={assignment.id}
                     assignment={assignment}
-                    dayDate={date!}
                     onRemove={handleRemove}
                     removingId={removingId}
                     isReordering={isReordering}
@@ -182,7 +173,6 @@ export function DayDetailPage() {
 
 function DayAssignmentCard({
   assignment,
-  dayDate,
   allIds,
   onRemove,
   removingId,
@@ -190,21 +180,16 @@ function DayAssignmentCard({
   sortable
 }: {
   assignment: Assignment;
-  dayDate: string;
   allIds?: number[];
   onRemove?: (assignment: Assignment) => void;
   removingId?: number | null;
   isReordering?: boolean;
   sortable?: SortableAssignment;
 }) {
-  const isCompleted = assignment.status === 'completed';
-
-  const viewUrl =
-    allIds && allIds.length > 0
-      ? `/word/${assignment.id}?day=${dayDate}&ids=${allIds.join(',')}`
-      : `/word/${assignment.id}?day=${dayDate}`;
-  const drillUrl = `/drill/${assignment.id}?queue_source=today`;
-  const cardUrl = isCompleted ? viewUrl : drillUrl;
+  const cardUrl = assignmentCardUrl(assignment, {
+    queueSource: 'today',
+    completedIds: allIds
+  });
 
   return (
     <AssignmentCard
@@ -214,23 +199,6 @@ function DayAssignmentCard({
       removingId={removingId}
       isReordering={isReordering}
       sortable={sortable}
-      meta={
-        <>
-          {isCompleted && assignment.time_spent_ms !== null && (
-            <span>
-              Time: {formatMs(assignment.time_spent_ms)}
-              {assignment.estimated_ms !== null && (
-                <>
-                  {' '}
-                  <DeltaChip deltaMs={assignment.time_spent_ms - assignment.estimated_ms} />
-                </>
-              )}{' '}
-              •{' '}
-            </span>
-          )}
-          {assignment.status}
-        </>
-      }
     />
   );
 }
