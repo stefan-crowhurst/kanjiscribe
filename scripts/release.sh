@@ -509,13 +509,23 @@ assemble_staging() {
         return "$EXIT_GUARD"
     fi
     echo "[stage] writing minimal apps/api/package.json"
-    if ! cat >"$staging/apps/api/package.json" <<'EOF'
+    # The pin comes from the dev repo's api manifest — the single source of
+    # truth for the production-only native dependency. Never hardcode it here.
+    native_dep_pin="$(node -p "require(process.argv[1]).dependencies['better-sqlite3']" "$REPO_ROOT/apps/api/package.json")" || {
+        err "could not read the better-sqlite3 pin from apps/api/package.json"
+        return "$EXIT_GUARD"
+    }
+    if [ -z "$native_dep_pin" ]; then
+        err "apps/api/package.json declares no better-sqlite3 dependency"
+        return "$EXIT_GUARD"
+    fi
+    if ! cat >"$staging/apps/api/package.json" <<EOF
 {
   "name": "@kanjiscribe/api-prod",
   "version": "0.1.0",
   "type": "module",
   "dependencies": {
-    "better-sqlite3": "^11.8.1"
+    "better-sqlite3": "$native_dep_pin"
   }
 }
 EOF

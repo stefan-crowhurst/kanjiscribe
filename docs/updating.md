@@ -111,13 +111,16 @@ cp -a apps/api/dist/. "$STG/apps/api/dist/"
 cp -a apps/web/dist/. "$STG/apps/web/dist/"
 cp systemd/kanjiscribe.service "$STG/systemd/"
 cp -a docs/. "$STG/docs/"
-cat > "$STG/apps/api/package.json" <<'EOF'
+# The native dependency pin comes from the api manifest — the single source
+# of truth, same derivation scripts/release.sh uses.
+BETTER_SQLITE3_PIN=$(node -p "require(process.argv[1]).dependencies['better-sqlite3']" ./apps/api/package.json)
+cat > "$STG/apps/api/package.json" <<EOF
 {
   "name": "@kanjiscribe/api-prod",
   "version": "0.1.0",
   "type": "module",
   "dependencies": {
-    "better-sqlite3": "^11.8.1"
+    "better-sqlite3": "$BETTER_SQLITE3_PIN"
   }
 }
 EOF

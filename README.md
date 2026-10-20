@@ -32,7 +32,7 @@ For context this application was created to run on a VPS/Raspberry Pi/home serve
 
 ## Prerequisites
 
-- **Node.js 22+** and **pnpm** (install globally with `corepack enable`)
+- **Node.js 24.x** (24.21.x — pinned in [`.nvmrc`](.nvmrc)) and **pnpm** (install globally with `corepack enable`)
 - **Build tools** for native addons: `sudo apt install build-essential python3`
 - **Dataset files** (see [Dataset Setup](#dataset-setup) below)
 

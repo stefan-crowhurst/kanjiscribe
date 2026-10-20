@@ -13,7 +13,18 @@
 #               working directory, and succeeds (keeps the suite fast, and
 #               makes the installed native dependency observable)
 #   - systemctl stub: records invocations, can fail actions, and can spawn a
-#     tiny real health server for service-mode tests
+#     tiny real health server for service-mode tests. It allowlists the
+#     throwaway unit name (TEST_SERVICE_NAME) and exits 99 with an ISOLATION
+#     BREACH message on any other name, so no test can ever address a real
+#     unit even if it forgets --service
+#   - sudo      strict interceptor: logs every invocation to SUDO_LOG, then
+#               execs the stub systemctl by its absolute baked path. It NEVER
+#               reaches real sudo — real sudo's Defaults secure_path resets
+#               PATH, which resolved systemctl to the real binary and drove
+#               the live production unit from this suite (the start-limit-hit
+#               incident; see .scratch/test-harness-stub-boundary.md). Any
+#               non-systemctl command or sudo flag is an ISOLATION BREACH
+#               (marker + exit 99); STUB_SUDO_POISON fails every invocation
 #   - pnpm       poison stub: fails if ever invoked (the build script is
 #                stubbed via KANJISCRIBE_BUILD_SCRIPT, so pnpm must never run)
 #   - date       deterministic fake timestamps when FAKE_DATE_FILE is exported
@@ -43,6 +54,15 @@ RELEASE_BACKUP_NAME_RE="^kanjiscribe-release-${TS_RE}\$"
 FAILED_INSTANCE_NAME_RE="^kanjiscribe-failed-${TS_RE}\$"
 LIST_RELEASE_LINE_RE="^kanjiscribe-release-${TS_RE}${TAB}${TS_RE}${TAB}release\$"
 LIST_FAILED_LINE_RE="^kanjiscribe-failed-${TS_RE}${TAB}${TS_RE}${TAB}failed\$"
+
+# The only service name this harness may ever speak to. Self-evidently fake
+# (deliberately not 'kanjiscribe-test', which could collide with a future
+# real unit). Exported so the systemctl stub's allowlist reads it directly —
+# one source of truth, so a stray production unit name fails loudly at the
+# stub. Every service-touching release run passes it via --service; the
+# production default is pinned only by a --help assertion
+# (test_usage_no_subcommand) and never exercised.
+export TEST_SERVICE_NAME="kanjiscribe-test-stub-only"
 
 PASS=0
 FAIL=0
@@ -128,13 +148,14 @@ SYSTEMCTL_PIDS="$STUBBIN/systemctl-pids.log"
 PNPM_MARKER="$STUBBIN/pnpm-called"
 CURL_MARKER="$STUBBIN/curl-polls"
 SUDO_MARKER="$STUBBIN/sudo-called"
+SUDO_LOG="$STUBBIN/sudo-invocations.log"
 FAKE_DATE_FILE="$STUBBIN/fake-date-count"
 STUB_BUILD_LOG="$STUBBIN/build-prod-invocations.log"
 # The fresh artifact the build stubs write into the dev repo's apps/api/dist
 # (the staging source). Cleaned up by cleanup_sandboxes on every exit.
 BUILD_MARKER="$REPO_ROOT/apps/api/dist/.release-test-build-marker"
 
-export STUB_NPM_LOG SYSTEMCTL_MARKER SYSTEMCTL_LOG SYSTEMCTL_PIDS PNPM_MARKER CURL_MARKER SUDO_MARKER FAKE_DATE_FILE STUB_BUILD_LOG
+export STUB_NPM_LOG SYSTEMCTL_MARKER SYSTEMCTL_LOG SYSTEMCTL_PIDS PNPM_MARKER CURL_MARKER SUDO_MARKER SUDO_LOG FAKE_DATE_FILE STUB_BUILD_LOG
 export BUILD_MARKER
 export PATH="$STUBBIN:$PATH"
 # The release script's default build mode invokes scripts/build-prod.sh; point
@@ -162,6 +183,19 @@ cat >"$STUBBIN/systemctl" <<'EOF'
 # server. Skip-service tests still prove that this file is never invoked.
 touch "${SYSTEMCTL_MARKER}"
 printf '%s\n' "$*" >>"${SYSTEMCTL_LOG}"
+
+# Allowlist: $TEST_SERVICE_NAME is the ONLY unit name this harness may ever
+# speak to. An allowlist states the true invariant — this harness never
+# speaks to any real unit — and any future test wanting a different name must
+# consciously widen the harness constant. It fires at the moment of
+# violation, with attribution. The name is read from the environment rather
+# than baked in here, so there is one source of truth and no drift to police.
+# (An exit-time log scan was rejected: SYSTEMCTL_LOG is truncated mid-suite,
+# so a scan would miss exactly the case it must catch.)
+if [ "${2:-}" != "${TEST_SERVICE_NAME:-}" ] || [ -z "${TEST_SERVICE_NAME:-}" ]; then
+    echo "ISOLATION BREACH: production unit name reached the stub: $*" >&2
+    exit 99
+fi
 
 if [ "${1:-}" = stop ] || [ "${1:-}" = restart ]; then
     if [ "${STUB_SYSTEMCTL_FAIL_STOP:-}" = 1 ]; then
@@ -218,14 +252,31 @@ fi
 exec /usr/bin/sleep "$@"
 EOF
 
-cat >"$STUBBIN/sudo" <<'EOF'
+# Strict interceptor: this suite must NEVER reach real sudo. Real sudo's
+# `Defaults secure_path` resets PATH, which resolved systemctl to the real
+# binary and drove the live production unit from this suite (the
+# start-limit-hit incident). So: log every invocation (making the non-root ->
+# sudo path assertable), require a bare `systemctl <args>`, and exec the STUB
+# systemctl via its absolute path baked in at stub-creation time (no PATH
+# lookup — that is exactly the hole secure_path opened). Anything else, any
+# sudo flag included, is an ISOLATION BREACH: loud stderr message, marker,
+# exit 99. STUB_SUDO_POISON keeps its original semantics (marker, message,
+# exit 99 on every invocation).
+cat >"$STUBBIN/sudo" <<EOF
 #!/bin/bash
-if [ -n "${STUB_SUDO_POISON:-}" ]; then
-    touch "${SUDO_MARKER}"
-    echo "sudo was invoked: $*" >&2
+printf '%s\n' "\$*" >>"$SUDO_LOG"
+if [ -n "\${STUB_SUDO_POISON:-}" ]; then
+    touch "$SUDO_MARKER"
+    echo "sudo was invoked: \$*" >&2
     exit 99
 fi
-exec /usr/bin/sudo "$@"
+if [ "\${1:-}" != "systemctl" ]; then
+    echo "ISOLATION BREACH: sudo interceptor only allows 'systemctl <args>', got: \$*" >&2
+    touch "$SUDO_MARKER"
+    exit 99
+fi
+shift
+exec "$STUBBIN/systemctl" "\$@"
 EOF
 
 HEALTH_SERVER="$STUBBIN/health-server.js"
@@ -342,6 +393,13 @@ managed_sibling_paths() {
 release_backup_paths() { managed_sibling_paths "$1" release; }
 failed_instance_paths() { managed_sibling_paths "$1" failed; }
 
+# Read the production-only native dependency pin from a package.json — the
+# same derivation scripts/release.sh and docs/updating.md use (the api
+# manifest is the single source of truth; never a hardcoded literal).
+native_dep_pin() {
+    node -p "require(process.argv[1]).dependencies['better-sqlite3']" "$1"
+}
+
 # ---------------------------------------------------------------------------
 # Issue 04: build stubs
 # ---------------------------------------------------------------------------
@@ -378,6 +436,90 @@ EOF
 # logging to the shared STUB_BUILD_LOG.
 make_build_stub "$STUBBIN/build-prod.sh" "$STUB_BUILD_LOG" 0
 
+# Bind the service stub to a staged fixture instance and a health port. The
+# target and port always travel together (the stub needs both to spawn the
+# staged server, and release.sh needs the same port to poll it), so they are
+# set in one place, in the calling shell — including the matching CLI flags
+# in SERVICE_RELEASE_ARGS, so the --service/--health-port pair cannot drift
+# across the call sites that verify health. A third argument arms the spawn;
+# without it the stub records calls but starts nothing:
+#     service_stub_env "$inst" 52655 spawn
+#     run_script release "$inst" --no-build "${SERVICE_RELEASE_ARGS[@]}"
+service_stub_env() {
+    export STUB_SYSTEMCTL_TARGET="$1"
+    export STUB_SYSTEMCTL_HEALTH_PORT="$2"
+    SERVICE_RELEASE_ARGS=(--service "$TEST_SERVICE_NAME" --health-port "$2")
+    if [ -n "${3:-}" ]; then
+        export STUB_SYSTEMCTL_START_SPAWNS=1
+    else
+        unset STUB_SYSTEMCTL_START_SPAWNS
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Isolation tripwires (preamble — run once, before any test, hard-aborting)
+#
+# These prove the stub layer is actually the only thing this suite talks to.
+# They are the safety net behind the production start-limit-hit incident:
+# a stub bypass here means a test could drive the live kanjiscribe.service.
+# ---------------------------------------------------------------------------
+
+# 1. Boundary probe: drive BOTH privilege paths systemctl_action can take
+#    (direct, and via sudo — it branches on id -u) with a read-only verb and
+#    the throwaway unit name, which is harmless even under a full bypass.
+#    Both entries must land in the stub systemctl log; the sudo leg must also
+#    land in the interceptor's log. Catches the secure_path bypass class:
+#    real sudo resets PATH, so a PATH-looked-up systemctl would miss the log.
+#    The throwaway name must also be ACCEPTED (the stub allowlists it by
+#    reading the exported TEST_SERVICE_NAME, so a name the stub rejects here
+#    means the constant is missing from the stub's environment and every
+#    later service test would fail with a misleading stop error).
+: >"$SYSTEMCTL_LOG"
+: >"$SUDO_LOG"
+direct_out="$(systemctl is-active "$TEST_SERVICE_NAME" 2>&1)" || true
+sudo_out="$(sudo systemctl is-active "$TEST_SERVICE_NAME" 2>&1)" || true
+probe_hits="$(grep -cxF "is-active $TEST_SERVICE_NAME" "$SYSTEMCTL_LOG")"
+if [ "$probe_hits" -ne 2 ]; then
+    die "isolation breached: sudo bypassed the stub layer (stub systemctl log has $probe_hits/2 is-active entries)"
+fi
+if ! grep -qxF "systemctl is-active $TEST_SERVICE_NAME" "$SUDO_LOG"; then
+    die "isolation breached: the sudo interceptor did not log the systemctl pass-through"
+fi
+case "$direct_out$sudo_out" in
+*ISOLATION\ BREACH*)
+    die "isolation breached: the stub rejected its own throwaway name (is TEST_SERVICE_NAME exported into the stub's environment?)"
+    ;;
+esac
+
+# 2. Verb strictness: anything other than a bare 'systemctl <args>' through
+#    sudo must die with the ISOLATION BREACH message. 'true' is deliberately
+#    harmless — even under a full stub bypass this probe cannot disturb the
+#    box (the same contract the fresh-install tests rely on).
+breach_out="$(sudo true 2>&1)" \
+    && die "isolation breached: sudo accepted a non-systemctl command"
+assert_matches "$breach_out" 'ISOLATION BREACH' "non-systemctl sudo command dies loudly"
+flag_out="$(sudo -u root systemctl is-active "$TEST_SERVICE_NAME" 2>&1)" \
+    && die "isolation breached: sudo accepted a flagged invocation"
+assert_matches "$flag_out" 'ISOLATION BREACH' "flagged sudo invocation dies loudly"
+
+# 3. Unit-name allowlist: the systemctl stub must refuse every name except
+#    the throwaway, and it must refuse it before acting. Driven directly
+#    against the stub (not through a release run) because the allowlist is a
+#    stub contract, not a release-shape behaviour — and a read-only verb
+#    means this probe cannot disturb the box even under a full bypass. This
+#    is the red test the allowlist was written against.
+foreign_out="$(systemctl is-active kanjiscribe-test 2>&1)" \
+    && die "isolation breached: the stub accepted a foreign unit name"
+assert_matches "$foreign_out" 'ISOLATION BREACH' "foreign unit name dies loudly"
+
+# 4. Static tripwire: this file must never reference the real instance path
+#    (the pattern is written with a character class so it cannot match its
+#    own spelling on the line below).
+if prod_hits="$(grep -n '/media/default/ssd/pro[d]' "${BASH_SOURCE[0]}")"; then
+    printf '%s\n' "$prod_hits" >&2
+    die "isolation breached: this test file references the real instance path"
+fi
+
 # ---------------------------------------------------------------------------
 # Script runner
 # ---------------------------------------------------------------------------
@@ -407,6 +549,9 @@ test_usage_no_subcommand() {
     assert_eq 0 "$RUN_RC" "--help exits 0"
     assert_matches "$RUN_OUT" 'fresh install' "--help documents the fresh-install path"
     assert_matches "$RUN_OUT" --service "--help documents the service flag"
+    # The production default is pinned HERE ONLY — no behavioral test may
+    # exercise it (a service-touching run must pass the throwaway name).
+    assert_matches "$RUN_OUT" 'default: kanjiscribe[.)]' "--help documents the production default service name"
     assert_matches "$RUN_OUT" --health-port "--help documents the health-port flag"
     assert_matches "$RUN_OUT" --no-auto-rollback "--help documents the rollback flag"
 }
@@ -536,8 +681,12 @@ test_release_success_end_to_end() {
     assert_exists "$inst/data/kanjiscribe.db" "data copied"
     assert_exists "$inst/data/kanji-svg/04e00.svg" "kanji-svg tree copied"
     assert_exists "$inst/apps/api/package.json" "minimal package.json staged"
-    assert_matches "$(cat "$inst/apps/api/package.json")" '"better-sqlite3": "\^11\.8\.1"' \
-        "package.json pins the native dependency"
+    # The staged pin must mirror the dev repo's api manifest — the single
+    # source of truth (release.sh derives it the same way).
+    staged_pin="$(native_dep_pin "$inst/apps/api/package.json")"
+    expected_pin="$(native_dep_pin "$REPO_ROOT/apps/api/package.json")"
+    assert_eq "$expected_pin" "$staged_pin" \
+        "package.json pins the native dependency from apps/api/package.json"
     assert_eq "$(cat "$REPO_ROOT/apps/api/dist/server.js")" "$(cat "$inst/apps/api/dist/server.js")" \
         "live server comes from the dev repo's prebuilt bundle (no build ran)"
 
@@ -557,20 +706,25 @@ test_release_success_end_to_end() {
     assert_not_exists "$PNPM_MARKER" "build tool never invoked"
 }
 
-test_service_mode_release_stops_starts_and_verifies_real_health() {
+# Behaviour: release.sh's service mode (systemctl is fully
+# stubbed — these pin release.sh's ordering and data-safety decisions, not
+# systemd): stop before the data copy, start after the swap, with a real
+# staged server proving the health check end to end.
+test_release_stops_before_data_copy_starts_after_swap() {
     sb="$(new_sandbox)"
     inst="$(make_instance "$sb" kanjiscribe)"
     : >"$SYSTEMCTL_LOG"
     : >"$SYSTEMCTL_PIDS"
-    export STUB_SYSTEMCTL_TARGET="$inst"
-    export STUB_SYSTEMCTL_HEALTH_PORT=52655
-    export STUB_SYSTEMCTL_START_SPAWNS=1
+    service_stub_env "$inst" 52655 spawn
 
-    run_script release "$inst" --no-build --health-port 52655
+    run_script release "$inst" --no-build "${SERVICE_RELEASE_ARGS[@]}"
     assert_eq 0 "$RUN_RC" "service-mode release succeeds after real health check"
     assert_matches "$RUN_OUT" 'health verification succeeded' "health success is reported"
-    assert_eq 'stop kanjiscribe' "$(sed -n '1p' "$SYSTEMCTL_LOG")" "service stops first"
-    assert_eq 'start kanjiscribe' "$(sed -n '2p' "$SYSTEMCTL_LOG")" "service starts after the swap"
+    # The custom --service value (the throwaway name, never the production
+    # default) must reach the stub for both verbs — the assertion folded in
+    # from the dropped test_service_flag_is_passed_to_systemctl.
+    assert_eq "stop $TEST_SERVICE_NAME" "$(sed -n '1p' "$SYSTEMCTL_LOG")" "service stops first"
+    assert_eq "start $TEST_SERVICE_NAME" "$(sed -n '2p' "$SYSTEMCTL_LOG")" "service starts after the swap"
     stop_line="$(printf '%s\n' "$RUN_OUT" | grep -n '\[service\] stopping service' | cut -d: -f1)"
     copy_line="$(printf '%s\n' "$RUN_OUT" | grep -n '\[data\] copying live data' | cut -d: -f1)"
     swap_line="$(printf '%s\n' "$RUN_OUT" | grep -n '\[swap\] staging -> live' | cut -d: -f1)"
@@ -581,52 +735,57 @@ test_service_mode_release_stops_starts_and_verifies_real_health() {
     assert_not_exists "$CURL_MARKER" "successful health used the real curl path"
 }
 
-test_service_stop_failure_aborts_before_data_copy_or_swap() {
+# Behaviour: a stop failure aborts before any modification of the live instance.
+test_stop_failure_aborts_before_modification() {
     sb="$(new_sandbox)"
     inst="$(make_instance "$sb" kanjiscribe)"
     live_ino="$(stat -c %i "$inst")"
     : >"$SYSTEMCTL_LOG"
     export STUB_SYSTEMCTL_FAIL_STOP=1
 
-    run_script release "$inst" --no-build
+    run_script release "$inst" --no-build --service "$TEST_SERVICE_NAME"
     assert_eq 4 "$RUN_RC" "stop failure uses EXIT_STOP"
     assert_matches "$RUN_OUT" 'could not stop service' "stop failure is clear"
     assert_not_exists "$inst.staging" "staging is cleaned after stop failure"
     assert_eq 0 "$(release_backup_paths "$inst" | wc -l)" "no release backup was created"
     assert_eq "$live_ino" "$(stat -c %i "$inst")" "live instance was untouched"
     assert_eq 0 "$(printf '%s\n' "$RUN_OUT" | grep -c '\[data\]')" "data copy did not run"
-    assert_eq 'stop kanjiscribe' "$(sed -n '1p' "$SYSTEMCTL_LOG")" "stop was attempted"
+    assert_eq "stop $TEST_SERVICE_NAME" "$(sed -n '1p' "$SYSTEMCTL_LOG")" "stop was attempted"
 }
 
-test_service_start_failure_uses_verification_rollback_path() {
+# Behaviour: a start failure after the swap is verification-class — the prior
+# instance is rolled back to automatically.
+test_start_failure_auto_rolls_back_to_previous_instance() {
     sb="$(new_sandbox)"
     inst="$(make_instance "$sb" kanjiscribe)"
     export STUB_SYSTEMCTL_FAIL_START=1
     rm -f -- "$CURL_MARKER"
 
-    run_script release "$inst" --no-build
+    run_script release "$inst" --no-build --service "$TEST_SERVICE_NAME"
     assert_eq 6 "$RUN_RC" "start failure uses EXIT_VERIFY"
     assert_matches "$RUN_OUT" 'could not start service' "start failure is clear"
     assert_eq 'fixture-db-v1' "$(cat "$inst/data/kanjiscribe.db")" "start failure restores the prior live instance"
     assert_eq 1 "$(failed_instance_paths "$inst" | wc -l)" "failed release is retained after start failure"
-    assert_eq 1 "$(grep -c '^restart kanjiscribe$' "$SYSTEMCTL_LOG")" "rollback restart is attempted"
+    assert_eq 1 "$(grep -c "^restart $TEST_SERVICE_NAME\$" "$SYSTEMCTL_LOG")" "rollback restart is attempted"
     assert_not_exists "$CURL_MARKER" "start failure does not poll a service that never started"
 }
 
-test_health_failure_auto_rolls_back_and_retains_one_failed_instance() {
+# Behaviour: health-verification failure auto-rolls back — pre-release data is
+# restored live, one failed instance is retained (newest wins), and foreign
+# directories survive every prune.
+test_auto_rollback_restores_pre_release_data_and_retains_one_failed_instance() {
     sb="$(new_sandbox)"
     inst="$(make_instance "$sb" kanjiscribe)"
     mkdir -p "$sb/kanjiscribe-manual-backup" "$sb/junk"
     echo manual >"$sb/kanjiscribe-manual-backup/marker"
     echo junk >"$sb/junk/marker"
-    export STUB_SYSTEMCTL_TARGET="$inst"
-    export STUB_SYSTEMCTL_HEALTH_PORT=52656
+    service_stub_env "$inst" 52656
     export STUB_CURL_FAIL=1
     export STUB_SLEEP_NOOP=1
     : >"$SYSTEMCTL_LOG"
     : >"$CURL_MARKER"
 
-    run_script release "$inst" --no-build --health-port 52656
+    run_script release "$inst" --no-build "${SERVICE_RELEASE_ARGS[@]}"
     assert_eq 6 "$RUN_RC" "health failure uses EXIT_VERIFY"
     assert_matches "$RUN_OUT" 'automatic rollback restored the previous instance' "auto-rollback success is reported"
     assert_eq 'fixture-db-v1' "$(cat "$inst/data/kanjiscribe.db")" "pre-release data is restored live"
@@ -634,13 +793,13 @@ test_health_failure_auto_rolls_back_and_retains_one_failed_instance() {
     first_failed="$(failed_instance_paths "$inst" | head -n1)"
     assert_matches "$(basename "$first_failed")" "$FAILED_INSTANCE_NAME_RE" "failed instance naming"
     assert_exists "$first_failed/apps/api/dist/server.js" "failed instance is kept whole"
-    assert_eq 1 "$(grep -c '^restart kanjiscribe$' "$SYSTEMCTL_LOG")" "service restarted after first rollback"
+    assert_eq 1 "$(grep -c "^restart $TEST_SERVICE_NAME\$" "$SYSTEMCTL_LOG")" "service restarted after first rollback"
     assert_exists "$sb/kanjiscribe-manual-backup/marker" "foreign manual backup survives failed pruning"
     assert_exists "$sb/junk/marker" "foreign junk survives failed pruning"
 
-    run_script release "$inst" --no-build --health-port 52656
+    run_script release "$inst" --no-build "${SERVICE_RELEASE_ARGS[@]}"
     assert_eq 6 "$RUN_RC" "second health failure uses EXIT_VERIFY"
-    assert_eq 2 "$(grep -c '^restart kanjiscribe$' "$SYSTEMCTL_LOG")" "service restarted after both rollbacks"
+    assert_eq 2 "$(grep -c "^restart $TEST_SERVICE_NAME\$" "$SYSTEMCTL_LOG")" "service restarted after both rollbacks"
     assert_eq 1 "$(failed_instance_paths "$inst" | wc -l)" "only newest failed instance remains"
     assert_not_exists "$first_failed" "older failed instance was pruned"
     assert_exists "$sb/kanjiscribe-manual-backup/marker" "manual backup survives second prune"
@@ -650,15 +809,14 @@ test_health_failure_auto_rolls_back_and_retains_one_failed_instance() {
 test_list_marks_failed_instances() {
     sb="$(new_sandbox)"
     inst="$(make_instance "$sb" kanjiscribe)"
-    export STUB_SYSTEMCTL_TARGET="$inst"
-    export STUB_SYSTEMCTL_HEALTH_PORT=52661
+    service_stub_env "$inst" 52661
     export STUB_CURL_FAIL=1
     export STUB_SLEEP_NOOP=1
 
     # Produce one failed instance via auto-rollback. The rollback consumed
     # the pre-release backup (it renames back into the live slot), so only
     # the failed sibling remains.
-    run_script release "$inst" --no-build --health-port 52661
+    run_script release "$inst" --no-build "${SERVICE_RELEASE_ARGS[@]}"
     assert_eq 6 "$RUN_RC" "release fails verification and rolls back"
     assert_eq 1 "$(failed_instance_paths "$inst" | wc -l)" "one failed instance exists"
     assert_eq 0 "$(release_backup_paths "$inst" | wc -l)" "the rollback consumed the release backup"
@@ -675,12 +833,11 @@ test_list_marks_failed_instances() {
 test_no_auto_rollback_leaves_failed_release_live() {
     sb="$(new_sandbox)"
     inst="$(make_instance "$sb" kanjiscribe)"
-    export STUB_SYSTEMCTL_TARGET="$inst"
-    export STUB_SYSTEMCTL_HEALTH_PORT=52657
+    service_stub_env "$inst" 52657
     export STUB_CURL_FAIL=1
     export STUB_SLEEP_NOOP=1
 
-    run_script release "$inst" --no-build --health-port 52657 --no-auto-rollback
+    run_script release "$inst" --no-build "${SERVICE_RELEASE_ARGS[@]}" --no-auto-rollback
     assert_eq 6 "$RUN_RC" "disabled auto-rollback still fails verification"
     assert_matches "$RUN_OUT" 'run: .* rollback ' "manual rollback command is printed"
     assert_eq 0 "$(failed_instance_paths "$inst" | wc -l)" "no failed sibling is created"
@@ -688,43 +845,33 @@ test_no_auto_rollback_leaves_failed_release_live() {
     assert_eq 1 "$(release_backup_paths "$inst" | wc -l)" "pre-release backup remains available"
 }
 
-test_service_flag_is_passed_to_systemctl() {
-    sb="$(new_sandbox)"
-    inst="$(make_instance "$sb" kanjiscribe)"
-    export STUB_SYSTEMCTL_TARGET="$inst"
-    export STUB_SYSTEMCTL_HEALTH_PORT=52658
-    export STUB_SYSTEMCTL_START_SPAWNS=1
-    : >"$SYSTEMCTL_LOG"
-
-    run_script release "$inst" --no-build --service kanjiscribe-test --health-port 52658
-    assert_eq 0 "$RUN_RC" "custom service release succeeds"
-    assert_eq 'stop kanjiscribe-test' "$(sed -n '1p' "$SYSTEMCTL_LOG")" "custom service stop name"
-    assert_eq 'start kanjiscribe-test' "$(sed -n '2p' "$SYSTEMCTL_LOG")" "custom service start name"
-}
-
+# Behaviour: when run as root, service control invokes systemctl directly — the
+# sudo interceptor is never consulted (hermetic via STUB_ID_UID=0 regardless
+# of the uid the suite itself runs as).
 test_root_service_control_does_not_use_sudo() {
     sb="$(new_sandbox)"
     inst="$(make_instance "$sb" kanjiscribe)"
-    export STUB_SYSTEMCTL_TARGET="$inst"
-    export STUB_SYSTEMCTL_HEALTH_PORT=52659
-    export STUB_SYSTEMCTL_START_SPAWNS=1
+    service_stub_env "$inst" 52659 spawn
+    export STUB_ID_UID=0
     export STUB_SUDO_POISON=1
     rm -f -- "$SUDO_MARKER"
+    : >"$SUDO_LOG"
 
-    run_script release "$inst" --no-build --health-port 52659
+    run_script release "$inst" --no-build "${SERVICE_RELEASE_ARGS[@]}"
     assert_eq 0 "$RUN_RC" "root service release succeeds"
     assert_not_exists "$SUDO_MARKER" "root invokes systemctl without sudo"
+    assert_eq 0 "$(wc -l <"$SUDO_LOG")" "the sudo interceptor logged no invocation"
 }
 
-test_fresh_service_stop_unit_not_loaded_is_non_fatal() {
+# Behaviour: fresh-install divergence — an unregistered unit (stop reports "not
+# loaded") is non-fatal on the fresh path; registration is a manual step.
+test_fresh_install_tolerates_unregistered_unit() {
     sb="$(new_sandbox)"
     target="$sb/kanjiscribe"
-    export STUB_SYSTEMCTL_TARGET="$target"
-    export STUB_SYSTEMCTL_HEALTH_PORT=52660
+    service_stub_env "$target" 52660 spawn
     export STUB_SYSTEMCTL_FAIL_STOP=unit-not-loaded
-    export STUB_SYSTEMCTL_START_SPAWNS=1
 
-    run_script release "$target" --no-build --health-port 52660
+    run_script release "$target" --no-build "${SERVICE_RELEASE_ARGS[@]}"
     assert_eq 0 "$RUN_RC" "fresh install tolerates an unregistered service unit"
     assert_matches "$RUN_OUT" 'not registered yet' "fresh-install stop decision is documented in output"
     assert_exists "$target" "fresh target was installed"
@@ -1406,15 +1553,14 @@ run_test test_guard_non_instance_target
 run_test test_guard_dev_repository_root
 run_test test_release_stale_staging_abort_and_force
 run_test test_release_success_end_to_end
-run_test test_service_mode_release_stops_starts_and_verifies_real_health
-run_test test_service_stop_failure_aborts_before_data_copy_or_swap
-run_test test_service_start_failure_uses_verification_rollback_path
-run_test test_health_failure_auto_rolls_back_and_retains_one_failed_instance
+run_test test_release_stops_before_data_copy_starts_after_swap
+run_test test_stop_failure_aborts_before_modification
+run_test test_start_failure_auto_rolls_back_to_previous_instance
+run_test test_auto_rollback_restores_pre_release_data_and_retains_one_failed_instance
 run_test test_list_marks_failed_instances
 run_test test_no_auto_rollback_leaves_failed_release_live
-run_test test_service_flag_is_passed_to_systemctl
 run_test test_root_service_control_does_not_use_sudo
-run_test test_fresh_service_stop_unit_not_loaded_is_non_fatal
+run_test test_fresh_install_tolerates_unregistered_unit
 run_test test_release_with_skip_service_is_silent
 run_test test_release_wal_sidecar_warning
 run_test test_release_data_copy_failure_exit_5
